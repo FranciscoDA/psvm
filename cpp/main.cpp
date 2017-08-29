@@ -60,6 +60,19 @@ void readCSV(vector<double>& x, vector<double>& y, string path) {
 
 int main(int argc, char** argv)
 {
+  #ifdef __CUDACC__
+    int nCudaDevices;
+    cudaGetDeviceCount(&nCudaDevices);
+    cout << "Device count: " << nCudaDevices << endl;
+    for (int i = 0; i < nCudaDevices; i++) {
+      cudaDeviceProp prop;
+      cudaGetDeviceProperties(&prop, i);
+      cout << "Device #" << i << endl;
+      cout << "\tName: " << prop.name << endl;
+      cout << "\tMemory Clock (KHz): " << prop.memoryClockRate << endl;
+      cout << "\tMemory Bus Width (bits): " << prop.memoryBusWidth << endl;
+    }
+  #endif
   vector<double> x;
   vector<double> y;
 

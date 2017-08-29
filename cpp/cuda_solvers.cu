@@ -125,8 +125,7 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y) {
     double i_max = result_i.score;
     int j = result_j.index;
     double j_min = result_j.score;
-    cout << "i: " << i << " imax: " << i_max << endl;
-    cout << "j: " << j << " jmin: " << j_min << endl;
+
     if (i_max <= j_min)
       break;
 
@@ -145,49 +144,12 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y) {
     cudaMemcpy(&d_alpha[j], &alpha[j], sizeof(double), cudaMemcpyHostToDevice);
   }
   svm.fit(x, y, alpha);
-  for (int i = 0; i < n; i++)
-    cout << "alpha_" << i << " = " << alpha[i] << endl;
 }
 
-/*int main(int argc, char** argv)
-{
-  int nCudaDevices;
-  cudaGetDeviceCount(&nCudaDevices);
-  cout << "Device count: " << nCudaDevices << endl;
-  for (int i = 0; i < nCudaDevices; i++) {
-    cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, i);
-    cout << "Device #" << i << endl;
-    cout << "\tName: " << prop.name << endl;
-    cout << "\tMemory Clock (KHz): " << prop.memoryClockRate << endl;
-    cout << "\tMemory Bus Width (bits): " << prop.memoryBusWidth << endl;
-  }
-
-  vector<double> x;
-  vector<double> y;
-  try {
-    readCSV(x, y, "dataset.csv");
-  }
-  catch (DatasetError e) {
-    switch (e.code) {
-      case DatasetError::INCONSISTENT_D:
-        cerr << "number of attributes in example don't match with the rest of the dataset";
-        break;
-      case DatasetError::INVALID_Y:
-        cerr << "invalid class value";
-        break;
-      default:
-        cerr << "error in dataset";
-        break;
-    }
-    cerr << " at line " << e.line << endl;
-    return 1;
-  }
-  SVM<LinearKernel> svm(10.0, x.size()/y.size(), LinearKernel());
-
-  smo(svm, x, y);
-  cout << endl;
-  //mgp(svm, x, y, 0.0001);
-}*/
+/* modified gradient projection method implementation */
+template<typename SVMT>
+void mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon) {
+  
+}
 
 #endif
