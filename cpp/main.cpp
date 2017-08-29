@@ -73,11 +73,14 @@ int main(int argc, char** argv)
       cout << "\tMemory Bus Width (bits): " << prop.memoryBusWidth << endl;
     }
   #endif
+
+  string datasetName = "dataset.csv";
   vector<double> x;
   vector<double> y;
 
+  cout << "Reading dataset (" << datasetName << ")" << endl;
   try {
-    readCSV(x, y, "dataset.csv");
+    readCSV(x, y, datasetName);
   }
   catch (DatasetError e) {
     switch (e.code) {
@@ -94,12 +97,15 @@ int main(int argc, char** argv)
     cerr << " at line " << e.line << endl;
     return 1;
   }
+
+  cout << "Training with SMO" << endl;
   SVM<LinearKernel> svm(10.0, x.size() / y.size(), LinearKernel());
   smo(svm, x, y);
   cout << "No. of SVs: " << svm.getSVAlphaY().size() << endl;
   for(auto ity = begin(svm.getSVAlphaY()); ity != end(svm.getSVAlphaY()); ++ity)
     cout << "alpha_i * y_i = " << *ity << endl;
 
+  cout << "Training with MGP" << endl;
   mgp(svm, x, y, 0.0001);
   cout << "No. of SVs: " << svm.getSVAlphaY().size() << endl;
   for(auto ity = begin(svm.getSVAlphaY()); ity != end(svm.getSVAlphaY()); ++ity)
