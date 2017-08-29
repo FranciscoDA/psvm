@@ -1,10 +1,9 @@
 
-#include <iostream>
+#ifndef _SEQUENTIAL_SOLVERS_H_
+#define _SEQUENTIAL_SOLVERS_H_
+
 #include <limits>
 #include <numeric>
-#include <fstream>
-#include <sstream>
-#include <string>
 
 #include "svm.h"
 
@@ -14,7 +13,7 @@ using namespace std;
 template<typename SVMT>
 void smo(SVMT& svm, const vector<double>& x, const vector<double>& y) {
   size_t n = y.size();
-  size_t d = x.size() / y.size();
+  size_t d = svm.getD();
   vector<double> alpha(n, 0.0);
   vector<double> g(n, 1.0);
 
@@ -36,31 +35,29 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y) {
     if (i_max <= j_min)
       break;
 
-    double Kii = svm.kernel(&x[i*d], &x[i*d], d),
-           Kij = svm.kernel(&x[i*d], &x[j*d], d),
-           Kjj = svm.kernel(&x[j*d], &x[j*d], d);
+    double Kii = svm.kernel(&x[i*d], &x[i*d]),
+           Kij = svm.kernel(&x[i*d], &x[j*d]),
+           Kjj = svm.kernel(&x[j*d], &x[j*d]);
 
     double lambda = min(svm.B(y[i]) - y[i] * alpha[i], y[j] * alpha[j] - svm.A(y[j]));
     lambda = min(lambda, (i_max-j_min)/(Kii+Kjj-2*Kij));
 
     for(int k = 0; k < n; k++) {
-      double Kik = svm.kernel(&x[i*d], &x[k*d], d),
-             Kjk = svm.kernel(&x[j*d], &x[k*d], d);
+      double Kik = svm.kernel(&x[i*d], &x[k*d]),
+             Kjk = svm.kernel(&x[j*d], &x[k*d]);
       g[k] += lambda * y[k] * (Kjk - Kik);
     }
     alpha[i] += y[i] * lambda;
     alpha[j] -= y[j] * lambda;
   }
   svm.fit(x, y, alpha);
-  for (int i = 0; i < n; i++)
-    cout << "alpha_" << i << " = " << alpha[i] << endl;
 }
 
 /* modified gradient projection method implementation */
 template<typename SVMT>
 void mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon) {
   size_t n = y.size();
-  size_t d = x.size() / y.size();
+  size_t d = svm.getD();
   vector<double> alpha(n, 0.0);
   vector<double> g(n, 0.0);
   vector<double> u(n, 0.0);
@@ -75,7 +72,7 @@ void mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double eps
       for (int k : working_set) {
         g[k] = 1.0;
         for (int i = 0; i < n; ++i)
-          g[k] -= y[k] * y[i] * svm.kernel(&x[k*d], &x[i*d], d) * alpha[i];
+          g[k] -= y[k] * y[i] * svm.kernel(&x[k*d], &x[i*d]) * alpha[i];
       }
       while(true) {
         double rho = 0.0;
@@ -114,7 +111,7 @@ void mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double eps
       double uhu = 0.0;
       for (int i = 0; i < n; i++)
         for (int j = 0; j < n; j++)
-          uhu += u[i] * y[i] * y[j] * svm.kernel(&x[i*d], &x[j*d], d) * u[j];
+          uhu += u[i] * y[i] * y[j] * svm.kernel(&x[i*d], &x[j*d]) * u[j];
       // lambda_plus is gu/uHu
       double lambda_max = numeric_limits<double>::infinity();
       for (int i = 0; i < n; ++i)
@@ -130,44 +127,6 @@ void mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double eps
         violating_samples.push_back(i);
   }
   svm.fit(x, y, alpha);
-  for (int i = 0; i < n; i++)
-    cout << "alpha_" << i << " = " << alpha[i] << endl;
 }
 
-int main(int argc, char** argv)
-{
-  SVM<LinearKernel> svm(10.0, LinearKernel());
-  vector<double> x;
-  vector<double> y;
-
-  fstream dataset("dataset.csv", ios_base::in);
-  while (!dataset.eof()) {
-    string line;
-    dataset >> line;
-    if (!line.length())
-      continue;
-    stringstream ss(line);
-    double val;
-    ss >> val;
-    ss.ignore(1, ',');
-    while (!ss.eof()) {
-      x.push_back(val);
-      ss >> val;
-      ss.ignore(1, ',');
-    }
-    y.push_back(val);
-  }
-  if (x.size() % y.size() != 0) {
-    cerr << "length of attributes is not divisible by length of classes" << endl;
-    return 1;
-  }
-  for (double y_i : y) {
-    if (y_i != -1.0 and y_i != 1.0) {
-      cerr << "invalid class value: " << y_i << endl;
-      return 2;
-    }
-  }
-  smo(svm, x, y);
-  cout << endl;
-  mgp(svm, x, y, 0.0001);
-}
+#endif

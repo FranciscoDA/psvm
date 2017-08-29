@@ -4,15 +4,15 @@ NVCC=nvcc
 CPPFLAGS=-std=c++11
 NVCCFLAGS=$(CPPFLAGS) --expt-extended-lambda
 
-DEPS=svm.h
+DEPS=svm.h sequential_solvers.cpp cuda_solvers.cu
 
 all: sequential parallel
 
-sequential: solvers.cpp $(DEPS)
-	g++ $< $(CPPFLAGS) -o $@
+sequential: main.cpp $(DEPS)
+	$(CPP) $< $(CPPFLAGS) -o $@
 
-parallel: cuda_solvers.cu $(DEPS)
-	nvcc $< $(NVCCFLAGS) -o $@
+parallel: main.cpp $(DEPS)
+	$(NVCC) $< $(NVCCFLAGS) -o $@
 
 clean:
 	rm -f sequential

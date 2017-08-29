@@ -1,10 +1,9 @@
 
-#include <iostream>
+#ifndef _CUDA_SOLVERS_H_
+#define _CUDA_SOLVERS_H_
+
 #include <limits>
 #include <numeric>
-#include <fstream>
-#include <sstream>
-#include <string>
 
 #include "svm.h"
 
@@ -30,7 +29,7 @@ __global__ void cu_init(int n, T val, T* dst)
 template<typename F, typename G, typename H>
 __global__ void cu_mr(size_t n, H* g_out, F mapping, G reduction)
 {
-  extern __shared__ H sdata[];
+  __shared__ H sdata[BLOCK_SIZE];
 
   unsigned int tid = threadIdx.x;
   unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -61,8 +60,8 @@ __global__ void cusmo_update_gradient(size_t n, size_t d, SVMT* g_svm, double* g
   if (k >= n)
     return;
 
-  double Kik = g_svm->kernel(&g_x[j*d], &g_x[k*d], d),
-         Kjk = g_svm->kernel(&g_x[i*d], &g_x[k*d], d);
+  double Kik = g_svm->kernel(&g_x[j*d], &g_x[k*d]),
+         Kjk = g_svm->kernel(&g_x[i*d], &g_x[k*d]);
   g_g[k] += lambda * g_y[k] * (Kjk - Kik);
 }
 
@@ -131,9 +130,9 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y) {
     if (i_max <= j_min)
       break;
 
-    double Kii = svm.kernel(&x[i*d], &x[i*d], d),
-           Kij = svm.kernel(&x[i*d], &x[j*d], d),
-           Kjj = svm.kernel(&x[j*d], &x[j*d], d);
+    double Kii = svm.kernel(&x[i*d], &x[i*d]),
+           Kij = svm.kernel(&x[i*d], &x[j*d]),
+           Kjj = svm.kernel(&x[j*d], &x[j*d]);
 
     double lambda = min(svm.B(y[i]) - y[i] * alpha[i], y[j] * alpha[j] - svm.A(y[j]));
     lambda = min(lambda, (i_max-j_min)/(Kii+Kjj-2*Kij));
@@ -150,7 +149,7 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y) {
     cout << "alpha_" << i << " = " << alpha[i] << endl;
 }
 
-int main(int argc, char** argv)
+/*int main(int argc, char** argv)
 {
   int nCudaDevices;
   cudaGetDeviceCount(&nCudaDevices);
@@ -164,38 +163,31 @@ int main(int argc, char** argv)
     cout << "\tMemory Bus Width (bits): " << prop.memoryBusWidth << endl;
   }
 
-  SVM<LinearKernel> svm(10.0, LinearKernel());
   vector<double> x;
   vector<double> y;
-
-  fstream dataset("dataset.csv", ios_base::in);
-  while (!dataset.eof()) {
-    string line;
-    dataset >> line;
-    if (!line.length())
-      continue;
-    stringstream ss(line);
-    double val;
-    ss >> val;
-    ss.ignore(1, ',');
-    while (!ss.eof()) {
-      x.push_back(val);
-      ss >> val;
-      ss.ignore(1, ',');
-    }
-    y.push_back(val);
+  try {
+    readCSV(x, y, "dataset.csv");
   }
-  if (x.size() % y.size() != 0) {
-    cerr << "length of attributes is not divisible by length of classes" << endl;
+  catch (DatasetError e) {
+    switch (e.code) {
+      case DatasetError::INCONSISTENT_D:
+        cerr << "number of attributes in example don't match with the rest of the dataset";
+        break;
+      case DatasetError::INVALID_Y:
+        cerr << "invalid class value";
+        break;
+      default:
+        cerr << "error in dataset";
+        break;
+    }
+    cerr << " at line " << e.line << endl;
     return 1;
   }
-  for (double y_i : y) {
-    if (y_i != -1.0 and y_i != 1.0) {
-      cerr << "invalid class value: " << y_i << endl;
-      return 2;
-    }
-  }
+  SVM<LinearKernel> svm(10.0, x.size()/y.size(), LinearKernel());
+
   smo(svm, x, y);
   cout << endl;
   //mgp(svm, x, y, 0.0001);
-}
+}*/
+
+#endif
