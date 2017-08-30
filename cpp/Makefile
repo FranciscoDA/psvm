@@ -6,14 +6,14 @@ CUDACCFLAGS=$(CPPFLAGS) --expt-extended-lambda -x cu
 
 DEPS=svm.h sequential_solvers.cpp cuda_solvers.cu
 
-all: sequential parallel
+all: svm cusvm
 
-sequential: main.cpp $(DEPS)
+svm: main.cpp $(DEPS)
 	$(CPP) $< $(CPPFLAGS) -o $@
 
-parallel: main.cpp $(DEPS)
+cusvm: main.cpp $(DEPS)
 	$(CUDACC) $< $(CUDACCFLAGS) -o $@
 
 clean:
-	rm -f sequential
-	rm -f parallel
+	rm -f svm
+	rm -f cusvm

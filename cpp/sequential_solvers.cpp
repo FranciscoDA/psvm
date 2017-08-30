@@ -2,6 +2,7 @@
 #ifndef _SEQUENTIAL_SOLVERS_H_
 #define _SEQUENTIAL_SOLVERS_H_
 
+#include <iostream>
 #include <limits>
 #include <numeric>
 
@@ -22,7 +23,7 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y) {
     double i_max = -numeric_limits<double>::infinity(),
            j_min = numeric_limits<double>::infinity();
 
-    for (int k = 0; k < n; k++) {
+    for (int k = n-1; k >= 0; k--) {
       if (y[k] * alpha[k] < svm.B(y[k]) and i_max < y[k] * g[k]) {
         i = k;
         i_max = y[k] * g[k];
@@ -32,6 +33,7 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y) {
         j_min = y[k] * g[k];
       }
     }
+
     if (i_max <= j_min)
       break;
 

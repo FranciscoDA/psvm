@@ -2,6 +2,7 @@
 #ifndef _CUDA_SOLVERS_H_
 #define _CUDA_SOLVERS_H_
 
+#include <iostream>
 #include <limits>
 #include <numeric>
 
@@ -33,6 +34,7 @@ __global__ void cu_mr(size_t n, H* g_out, F mapping, G reduction)
 
   unsigned int tid = threadIdx.x;
   unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+  unsigned int right = blockDim.x < n - blockIdx.x*blockDim.x ? blockDim.x : n - blockIdx.x*blockDim.x;
 
   if (i >= n)
     return;
@@ -43,7 +45,7 @@ __global__ void cu_mr(size_t n, H* g_out, F mapping, G reduction)
   for (unsigned int s = 1; s < blockDim.x; s *= 2)
   {
     int index = s * 2 * tid;
-    if(index < blockDim.x)
+    if (index+s < right)
     {
       sdata[index] = reduction(sdata[index], sdata[index+s]);
     }
@@ -60,9 +62,13 @@ __global__ void cusmo_update_gradient(size_t n, size_t d, SVMT* g_svm, double* g
   if (k >= n)
     return;
 
-  double Kik = g_svm->kernel(&g_x[j*d], &g_x[k*d]),
-         Kjk = g_svm->kernel(&g_x[i*d], &g_x[k*d]);
+  double Kik = g_svm->kernel(&g_x[i*d], &g_x[k*d]),
+         Kjk = g_svm->kernel(&g_x[j*d], &g_x[k*d]);
   g_g[k] += lambda * g_y[k] * (Kjk - Kik);
+}
+__global__ void cusmo_update_alpha(double* g_y, double* g_alpha, int i, int j, double lambda) {
+  g_alpha[i] += g_y[i] * lambda;
+  g_alpha[j] -= g_y[j] * lambda;
 }
 
 /* sequential minimal optimization method */
@@ -111,15 +117,15 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y) {
   while(true) {
     cu_mr<<<NUM_BLOCKS, BLOCK_SIZE>>>(n, d_result, map_i, reduce_i);
     cudaMemcpy(gather_result.data(), d_result, sizeof(Search_t) * gather_result.size(), cudaMemcpyDeviceToHost);
-    auto result_i = *begin(gather_result);
-    for (auto it = begin(gather_result); it != end(gather_result); ++it)
-      result_i = reduce_i(result_i, *it);
+    auto result_i = gather_result[0];
+    for (int z = 1; z < n/NUM_BLOCKS + n%NUM_BLOCKS ? 0 : 1; ++z)
+      result_i = reduce_i(result_i, gather_result[z]);
 
     cu_mr<<<NUM_BLOCKS, BLOCK_SIZE>>>(n, d_result, map_j, reduce_j);
     cudaMemcpy(gather_result.data(), d_result, sizeof(Search_t) * gather_result.size(), cudaMemcpyDeviceToHost);
-    auto result_j = *begin(gather_result);
-    for (auto it = begin(gather_result); it != end(gather_result); ++it)
-      result_j = reduce_j(result_j, *it);
+    auto result_j = gather_result[0];
+    for (int z = 1; z < n/NUM_BLOCKS + n%NUM_BLOCKS ? 0 : 1; ++z)
+      result_j = reduce_j(result_j, gather_result[z]);
 
     int i = result_i.index;
     double i_max = result_i.score;
@@ -137,11 +143,9 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y) {
     lambda = min(lambda, (i_max-j_min)/(Kii+Kjj-2*Kij));
 
     cusmo_update_gradient<<<NUM_BLOCKS, BLOCK_SIZE>>>(n, d, d_svm, d_x, d_y, d_alpha, d_g, lambda, i, j);
-
-    alpha[i] += y[i] * lambda;
-    alpha[j] -= y[j] * lambda;
-    cudaMemcpy(&d_alpha[i], &alpha[i], sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(&d_alpha[j], &alpha[j], sizeof(double), cudaMemcpyHostToDevice);
+    cusmo_update_alpha<<<1,1>>>(d_y, d_alpha, i, j, lambda);
+    cudaMemcpy(&alpha[i], &d_alpha[i], sizeof(double), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&alpha[j], &d_alpha[j], sizeof(double), cudaMemcpyDeviceToHost);
   }
   svm.fit(x, y, alpha);
 }
