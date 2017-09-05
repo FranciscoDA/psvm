@@ -124,6 +124,6 @@ template<typename SVMT>
 double test(const SVMT& svm, const vector<double>& x, const vector<double>& y);
 
 template<typename SVMT>
-double test1VA(vector<SVMT>& classifiers, const vector<double>& x, vector<double>& y);
+unsigned int test1VA(const vector<SVMT>& classifiers, const vector<double>& x, const vector<double>& y);
 
 #endif

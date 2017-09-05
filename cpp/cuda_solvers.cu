@@ -124,7 +124,7 @@ __global__ void cusmo_update_alpha(double* g_y, double* g_alpha, int i, int j, d
 
 /* sequential minimal optimization method */
 template<typename SVMT>
-void smo(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon, double C) {
+unsigned int smo(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon, double C) {
    size_t n = y.size();
    size_t d = svm.getD();
 
@@ -168,7 +168,7 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y, double eps
 	Search_t* d_result2;
 	cudaMalloc(&d_result2, sizeof(Search_t)*GRID_SIZE);
    //vector<Search_t> gather_result (GRID_SIZE);
-	size_t iterations = 0;
+	unsigned int iterations = 0;
    while(true) {
 		++iterations;
 		Search_t result_i = cu_mr_wrapper(n, d_result, map_i, reduce_i);
@@ -205,9 +205,7 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y, double eps
 	cudaFree(d_y);
 	cudaFree(d_alpha);
 	cudaFree(d_g);
-
-
-	cout << "smo iterations: " << iterations << endl;
+	return iterations;
 }
 
 /* modified gradient projection method implementation */
@@ -235,7 +233,7 @@ double test(const SVMT& svm, const vector<double>& x, const vector<double>& y) {
 	return double(hits) / double(y.size());
 }
 template<typename SVMT>
-double test1VA(vector<SVMT>& classifiers, const vector<double>& x, vector<double>& y) {
+unsigned int test1VA(vector<SVMT>& classifiers, const vector<double>& x, const vector<double>& y) {
 	unsigned int hits = 0;
 	for (unsigned int i = 0; i < y.size(); ++i) {
 		double best = 0.0;
@@ -247,10 +245,11 @@ double test1VA(vector<SVMT>& classifiers, const vector<double>& x, vector<double
 				best = j;
 			}
 		}
-		if (best == y[i])
+		if (best == y[i]) {
 			++hits;
+		}
 	}
-	return double(hits) / double(y.size());
+	return hits;
 }
 
 #endif

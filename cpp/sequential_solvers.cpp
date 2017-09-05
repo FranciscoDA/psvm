@@ -12,13 +12,13 @@ using namespace std;
 
 /* sequential minimal optimization method implementation */
 template<typename SVMT>
-void smo(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon, double C) {
+unsigned int smo(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon, double C) {
 	size_t n = y.size();
 	size_t d = svm.getD();
 	vector<double> alpha(n, 0.0);
 	vector<double> g(n, 1.0);
 
-	size_t iterations = 0;
+	unsigned int iterations = 0;
 	while(true) {
 		++iterations;
 		int i = 0, j = 0;
@@ -59,12 +59,12 @@ void smo(SVMT& svm, const vector<double>& x, const vector<double>& y, double eps
 		alpha[j] -= y[j] * lambda;
 	}
 	svm.fit(x, y, alpha, epsilon, C);
-	cout << "smo iterations: " << iterations << endl;
+	return iterations;
 }
 
 /* modified gradient projection method implementation */
 template<typename SVMT>
-void mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon, double C) {
+unsigned int mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon, double C) {
 	size_t n = y.size();
 	size_t d = svm.getD();
 	vector<double> alpha(n, 0.0);
@@ -75,7 +75,9 @@ void mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double eps
 	for (int i = 0; i < violating_samples.size(); ++i)
 	violating_samples[i] = i;
 
+	unsigned int iterations = 0;
 	while(violating_samples.size() > 0) {
+		++iterations;
 		vector<int> working_set = violating_samples;
 		while (true) {
 			for (int k : working_set) {
@@ -137,6 +139,7 @@ void mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double eps
 		}
 	}
 	svm.fit(x, y, alpha, epsilon, C);
+	return iterations;
 }
 
 template<typename SVMT>
@@ -158,7 +161,7 @@ double test(const SVMT& svm, const vector<double>& x, const vector<double>& y) {
 	return double(hits) / double(y.size());
 }
 template<typename SVMT>
-double test1VA(vector<SVMT>& classifiers, const vector<double>& x, vector<double>& y) {
+unsigned int test1VA(const vector<SVMT>& classifiers, const vector<double>& x, const vector<double>& y) {
 	unsigned int hits = 0;
 	for (unsigned int i = 0; i < y.size(); ++i) {
 		double best = 0.0;
@@ -173,7 +176,7 @@ double test1VA(vector<SVMT>& classifiers, const vector<double>& x, vector<double
 		if (best == y[i])
 			++hits;
 	}
-	return double(hits) / double(y.size());
+	return hits;
 }
 
 #endif
