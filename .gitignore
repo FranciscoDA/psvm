@@ -1,5 +1,4 @@
 __pycache__
-cpp/optparse/
 cpp/mnist/*
 !cpp/mnist/README.md
 *.out
