@@ -108,7 +108,7 @@ void readIDX(vector<double>& x, string path) {
 template<typename KT, typename ...KARG>
 void trainAndMaybeTest(
 	const vector<double>& x, const vector<double>& y,
-	bool doTest, const vector<double>& tx, const vector<double>& ty,
+	const vector<double>& tx, const vector<double>& ty,
 	double C,
 	KARG... kargs
 ) {
@@ -122,7 +122,7 @@ void trainAndMaybeTest(
 		clock_t end = clock();
 		double elapsed = double(end-start)/CLOCKS_PER_SEC;
 		cout << "No. of SVs: " << svm.getSVAlphaY().size() << "(" << iterations << " iterations in " << elapsed << "s)" << endl;
-		if (doTest) {
+		if (ty.size() > 0) {
 			unsigned int hits = test(svm, tx, ty);
 			double accuracy = double(hits)/double(ty.size());
 			cout << "Model accuracy: " << hits << "/" << ty.size() << " = " << accuracy << endl;
@@ -151,7 +151,7 @@ void trainAndMaybeTest(
 		}
 		cout << "Total of SVs: " << nsv_final << endl;
 		cout << "Total training time: " << elapsed_final << "s" << endl;
-		if (doTest) {
+		if (ty.size() > 0) {
 			unsigned int hits = test1VA(classifiers, tx, ty);
 			double accuracy = double(hits)/double(ty.size());
 			cout << "Model accuracy: " << hits << "/" << ty.size() << " = " << accuracy << endl;
@@ -174,23 +174,31 @@ int main(int argc, char** argv) {
 	}
 	#endif
 
+	const vector<string> FORMAT_OPTIONS {"csv", "idx"};
+	const vector<string> KERNEL_OPTIONS {"linear", "poly", "rbf"};
 	optparse::OptionParser parser;
-	parser.add_option("--train-attributes").dest("train-attributes");
-	parser.add_option("--train-labels").dest("train-labels");
-	parser.add_option("--train-format").dest("train-format");
-	parser.add_option("--train-n").dest("train-n");
+	parser.add_option("--train-attributes").dest("train-attributes").help("Specifies training dataset with attributes (required)");
+	parser.add_option("--train-labels").dest("train-labels").help("Specifies training dataset with labels (required)");
+	parser.add_option("--train-format").dest("train-format")
+		.type("choice").choices(begin(FORMAT_OPTIONS), end(FORMAT_OPTIONS))
+		.help("Specifies training dataset format (csv|idx)");
+	parser.add_option("--train-n").dest("train-n").type("int").help("Specifies amount of training samples to use (optional)");
 
-	parser.add_option("--test-attributes").dest("test-attributes");
-	parser.add_option("--test-labels").dest("test-labels");
-	parser.add_option("--test-format").dest("test-format");
-	parser.add_option("--test-n").dest("test-n");
+	parser.add_option("--test-attributes").dest("test-attributes").help("Specifies testing dataset attributes (optional)");
+	parser.add_option("--test-labels").dest("test-labels").help("Specifies testing dataset labels (required if testing)");
+	parser.add_option("--test-format").dest("test-format")
+		.type("choice").choices(begin(FORMAT_OPTIONS), end(FORMAT_OPTIONS))
+		.help("Specifies testing dataset format (csv|idx) (required if testing)");
+	parser.add_option("--test-n").dest("test-n").type("int").help("Specifies amount of testing samples to use (optional)");
 
-	parser.add_option("--normalize-zero-one").action("store_true").dest("normalize-zero-one");
-	parser.add_option("--cost").dest("cost");
-	parser.add_option("--kernel").dest("kernel");
-	parser.add_option("--gamma").dest("kernel-gamma");
-	parser.add_option("--power").dest("kernel-p");
-	parser.add_option("--constant").dest("kernel-c");
+	parser.add_option("--normalize-zero-one").action("store_true").dest("normalize-zero-one").help("Preprocesses data to fit [0;1] range");
+	parser.add_option("--cost").dest("cost").type("double").help("Specifies the cost factor C");
+	parser.add_option("--kernel").dest("kernel")
+		.type("choice").choices(begin(KERNEL_OPTIONS), end(KERNEL_OPTIONS))
+		.help("Specifies the svm kernel to use (linear|poly|rbf)");
+	parser.add_option("--gamma").dest("kernel-gamma").type("double").help("Specifies the gamma factor for RBF kernel (gamma>0)");
+	parser.add_option("--power").dest("kernel-p").type("double").help("Specifies the p power for polynomial kernel");
+	parser.add_option("--constant").dest("kernel-c").type("double").help("Specifies the c constant for polynomial kernel (set c=0 to use homogeneous)");
 	const optparse::Values options = parser.parse_args(argc, argv);
 
 	double C = 1.0;
@@ -201,7 +209,6 @@ int main(int argc, char** argv) {
 	vector<double> x;
 	vector<double> y;
 
-	bool use_test_data = false;
 	vector<double> test_x;
 	vector<double> test_y;
 
@@ -223,21 +230,12 @@ int main(int argc, char** argv) {
 			if (options["test-format"] == "csv") {
 				readCSV(test_x, options["test-attributes"]);
 				readCSV(test_y, options["test-labels"]);
-				use_test_data = true;
 			}
 			else if (options["test-format"] == "idx") {
 				readIDX(test_x, options["test-attributes"]);
 				readIDX(test_y, options["test-labels"]);
-				use_test_data = true;
 			}
 		}
-		//readCSV(x, y, "dataset.csv");
-		//readIDX(x, "mnist/train-images.idx3-ubyte");
-		//readIDX(y, "mnist/train-labels.idx1-ubyte");
-		//readIDX(test_x, "mnist/t10k-images.idx3-ubyte");
-		//readIDX(test_y, "mnist/t10k-labels.idx1-ubyte");
-		/*for (auto i : test_x)
-		cout << i << endl;*/
 	}
 	catch (DatasetError e) {
 		switch (e.code) {
@@ -273,9 +271,6 @@ int main(int argc, char** argv) {
 	cout << x.size() << " datapoints divided between " << y.size() << " instances" << endl;
 
 	if (options.is_set("normalize-zero-one")) {
-		/*cout << "Normalizing training set from [0;255] to [0;1]" << endl;
-		for (double& x_i : x)      x_i /= 255.0;
-		for (double& x_i : test_x) x_i /= 255.0;*/
 		double _min = x[0];
 		double _max = x[0];
 		for (double x_i : x) {
@@ -284,7 +279,7 @@ int main(int argc, char** argv) {
 		}
 		cout << "Normalizing training set from [" << _min << ";" << _max << "] to [0;1]" << endl;
 		for(double& x_i : x) x_i = (x_i - _min) / (_max - _min);
-		if (use_test_data) {
+		if (test_y.size() > 0) {
 			cout << "Normalizing test set from [" << _min << ";" << _max << "] to [0;1]" << endl;
 			for(double& x_i : test_x) x_i = (x_i - _min) / (_max - _min);
 		}
@@ -293,14 +288,14 @@ int main(int argc, char** argv) {
 	if (options.is_set("kernel")) {
 		if (options["kernel"] == "linear") {
 			cout << "Using linear kernel" << endl;
-			trainAndMaybeTest<LinearKernel>(x, y, use_test_data, test_x, test_y, C);
+			trainAndMaybeTest<LinearKernel>(x, y, test_x, test_y, C);
 		}
 		else if (options["kernel"] == "rbf") {
 			double gamma = 0.05;
 			if (options.is_set("kernel-gamma"))
 				gamma = double(options.get("kernel-gamma"));
 			cout << "Using RBF kernel with gamma=" << gamma << endl;
-			trainAndMaybeTest<RbfKernel>(x, y, use_test_data, test_x, test_y, C, -gamma);
+			trainAndMaybeTest<RbfKernel>(x, y, test_x, test_y, C, -gamma);
 		}
 		else if (options["kernel"] == "poly") {
 			double p = 2.0;
@@ -310,39 +305,7 @@ int main(int argc, char** argv) {
 			if (options.is_set("kernel-c"))
 				p = double(options.get("kernel-c"));
 			cout << "Using Poly kernel with p=" << p << ", c=" << c << endl;
-			trainAndMaybeTest<PolynomialKernel>(x, y, use_test_data, test_x, test_y, C, p, c);
+			trainAndMaybeTest<PolynomialKernel>(x, y, test_x, test_y, C, p, c);
 		}
 	}
-
-	/*set<double> classes(begin(y), end(y));
-
-	if (classes.size() == 2 and classes.find(1.0) != end(classes) and classes.find(-1.0) != end(classes)) {
-		cout << "Two class classification (y_i in {-1, 1})" << endl;
-		cout << "Training with SMO" << endl;
-		SVM<LinearKernel> svm(x.size() / y.size(), LinearKernel());
-		smo(svm, x, y, 0.01, 2.0);
-		cout << "No. of SVs: " << svm.getSVAlphaY().size() << endl;
-		for(auto ity = begin(svm.getSVAlphaY()); ity != end(svm.getSVAlphaY()); ++ity)
-			cout << "alpha_i * y_i = " << *ity << endl;
-	}
-	else {
-		cout << "Multi-class classification (one vs all) - " << classes.size() << " classes" << endl;
-		std::vector<SVM<RbfKernel>> classifiers;
-
-		for (double& x_i : x)      x_i /= 255.0;
-		for (double& x_i : test_x) x_i /= 255.0;
-
-		for (double label : classes) {
-			cout << "Training for label=" << label << endl;
-			vector<double> y1;
-			y1.reserve(y.size());
-			for (double y_i : y)
-				y1.push_back(y_i == label ? 1.0 : -1.0);
-			SVM<RbfKernel> svm(x.size() / y.size(), RbfKernel(-0.05));
-			smo(svm, x, y1, 0.001, 0.6);
-			cout << "No. of SVs: " << svm.getSVAlphaY().size() << endl;
-			classifiers.push_back(svm);
-		}
-		cout << "Model accuracy: " << test1VA(classifiers, test_x, test_y) << endl;
-	}*/
 }
