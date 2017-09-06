@@ -303,7 +303,7 @@ int main(int argc, char** argv) {
 			if (options.is_set("kernel-p"))
 				p = double(options.get("kernel-p"));
 			if (options.is_set("kernel-c"))
-				p = double(options.get("kernel-c"));
+				c = double(options.get("kernel-c"));
 			cout << "Using Poly kernel with p=" << p << ", c=" << c << endl;
 			trainAndMaybeTest<PolynomialKernel>(x, y, test_x, test_y, C, p, c);
 		}
