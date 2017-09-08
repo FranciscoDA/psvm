@@ -1,5 +1,5 @@
 __pycache__
-cpp/mnist/*
-!cpp/mnist/README.md
-!cpp/mnist/dump.py
+mnist/*
+!mnist/README.md
+!mnist/dump.py
 *.out
