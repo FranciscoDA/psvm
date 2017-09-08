@@ -1,5 +1,5 @@
 __pycache__
-mnist/*
+mnist
 bin/
 !mnist/README.md
 !mnist/dump.py
