@@ -109,8 +109,8 @@ template<typename KT, typename ...KARG>
 void trainAndMaybeTest(
 	const vector<double>& x, const vector<double>& y,
 	const vector<double>& tx, const vector<double>& ty,
-	double C,
-	KARG... kargs
+	const vector<double>& px,
+	double C, KARG... kargs
 ) {
 	set<double> classes(begin(y), end(y));
 	if (classes.size() == 2 and classes.find(1.0) != end(classes) and classes.find(-1.0) != end(classes)) {
@@ -126,6 +126,14 @@ void trainAndMaybeTest(
 			unsigned int hits = test(svm, tx, ty);
 			double accuracy = double(hits)/double(ty.size());
 			cout << "Model accuracy: " << hits << "/" << ty.size() << " = " << accuracy << endl;
+		}
+		if (px.size() > 0) {
+			cout << "Predictions:" << endl;
+			size_t d = x.size()/y.size();
+			for (unsigned int i = 0; i < px.size()/d; ++i) {
+				double dval = decision(svm, &px[i*d]);
+				cout << i << ". " << (dval>0?"1":"-1") << endl;
+			}
 		}
 	}
 	else {
@@ -152,9 +160,17 @@ void trainAndMaybeTest(
 		cout << "Total of SVs: " << nsv_final << endl;
 		cout << "Total training time: " << elapsed_final << "s" << endl;
 		if (ty.size() > 0) {
-			unsigned int hits = test1VA(classifiers, tx, ty);
+			unsigned int hits = test1AA(classifiers, tx, ty);
 			double accuracy = double(hits)/double(ty.size());
 			cout << "Model accuracy: " << hits << "/" << ty.size() << " = " << accuracy << endl;
+		}
+		if (px.size() > 0) {
+			cout << "Predictions:" << endl;
+			size_t d = x.size()/y.size();
+			for (unsigned int i = 0; i < px.size()/d; ++i) {
+				int k = predict1AA(classifiers, &px[i*d]);
+				cout << i << ". " << k << endl;
+			}
 		}
 	}
 }
@@ -199,6 +215,11 @@ int main(int argc, char** argv) {
 	parser.add_option("--gamma").dest("kernel-gamma").type("double").help("Specifies the gamma factor for RBF kernel (gamma>0)");
 	parser.add_option("--power").dest("kernel-p").type("double").help("Specifies the p power for polynomial kernel");
 	parser.add_option("--constant").dest("kernel-c").type("double").help("Specifies the c constant for polynomial kernel (set c=0 to use homogeneous)");
+
+	parser.add_option("--predict-attributes").dest("predict-attributes").help("Specifies predict dataset with attributes (optional)");
+	parser.add_option("--predict-format").dest("predict-format")
+		.type("choices").choices(begin(FORMAT_OPTIONS), end(FORMAT_OPTIONS))
+		.help("Specifies predict dataset format (csv|idx)");
 	const optparse::Values options = parser.parse_args(argc, argv);
 
 	double C = 1.0;
@@ -211,6 +232,8 @@ int main(int argc, char** argv) {
 
 	vector<double> test_x;
 	vector<double> test_y;
+
+	vector<double> predict_x;
 
 	cout << "Reading dataset..." << endl;
 	try {
@@ -234,6 +257,15 @@ int main(int argc, char** argv) {
 			else if (options["test-format"] == "idx") {
 				readIDX(test_x, options["test-attributes"]);
 				readIDX(test_y, options["test-labels"]);
+			}
+		}
+		if (options.is_set("predict-attributes") and options.is_set("predict-format")) {
+			cout << "Reading predict data from " << options["predict-attributes"] << endl;
+			if (options["predict-format"] == "csv") {
+				readCSV(predict_x, options["predict-attributes"]);
+			}
+			else if (options["predict-format"] == "idx") {
+				readIDX(predict_x, options["predict-attributes"]);
 			}
 		}
 	}
@@ -283,19 +315,23 @@ int main(int argc, char** argv) {
 			cout << "Normalizing test set from [" << _min << ";" << _max << "] to [0;1]" << endl;
 			for(double& x_i : test_x) x_i = (x_i - _min) / (_max - _min);
 		}
+		if (predict_x.size() > 0) {
+			cout << "Normalizing predict set from [" << _min << ";" << _max << "] to [0;1]" << endl;
+			for (double& x_i : predict_x) x_i = (x_i - _min) / (_max-_min);
+		}
 	}
 
 	if (options.is_set("kernel")) {
 		if (options["kernel"] == "linear") {
 			cout << "Using linear kernel" << endl;
-			trainAndMaybeTest<LinearKernel>(x, y, test_x, test_y, C);
+			trainAndMaybeTest<LinearKernel>(x, y, test_x, test_y, predict_x, C);
 		}
 		else if (options["kernel"] == "rbf") {
 			double gamma = 0.05;
 			if (options.is_set("kernel-gamma"))
 				gamma = double(options.get("kernel-gamma"));
 			cout << "Using RBF kernel with gamma=" << gamma << endl;
-			trainAndMaybeTest<RbfKernel>(x, y, test_x, test_y, C, -gamma);
+			trainAndMaybeTest<RbfKernel>(x, y, test_x, test_y, predict_x, C, -gamma);
 		}
 		else if (options["kernel"] == "poly") {
 			double p = 2.0;
@@ -305,7 +341,7 @@ int main(int argc, char** argv) {
 			if (options.is_set("kernel-c"))
 				c = double(options.get("kernel-c"));
 			cout << "Using Poly kernel with p=" << p << ", c=" << c << endl;
-			trainAndMaybeTest<PolynomialKernel>(x, y, test_x, test_y, C, p, c);
+			trainAndMaybeTest<PolynomialKernel>(x, y, test_x, test_y, predict_x, C, p, c);
 		}
 	}
 }

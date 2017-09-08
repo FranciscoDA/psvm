@@ -216,11 +216,11 @@ void mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double eps
 
 template<typename SVMT>
 double decision(const SVMT& svm, const double* x) {
-	double sum = 0.0;
+	double sum = svm.getBias();
 	for (int i = 0; i < svm.getSVAlphaY().size(); ++i) {
 		sum += svm.getSVAlphaY()[i] * svm.kernel(&svm.getSVX()[i*svm.getD()], x);
 	}
-	return sum+svm.getBias();
+	return sum;
 }
 template<typename SVMT>
 double test(const SVMT& svm, const vector<double>& x, const vector<double>& y) {
@@ -233,7 +233,20 @@ double test(const SVMT& svm, const vector<double>& x, const vector<double>& y) {
 	return double(hits) / double(y.size());
 }
 template<typename SVMT>
-unsigned int test1VA(vector<SVMT>& classifiers, const vector<double>& x, const vector<double>& y) {
+int predict1AA(const vector<SVMT>& classifiers, const double* x) {
+	int best = 0;
+	double best_score = decision(classifiers[0], x);
+	for (unsigned int j = 1; j < classifiers.size(); ++j) {
+		double score = decision(classifiers[j], x);
+		if (score > best_score) {
+			best_score = score;
+			best = j;
+		}
+	}
+	return best;
+}
+template<typename SVMT>
+unsigned int test1AA(vector<SVMT>& classifiers, const vector<double>& x, const vector<double>& y) {
 	unsigned int hits = 0;
 	for (unsigned int i = 0; i < y.size(); ++i) {
 		double best = 0.0;
