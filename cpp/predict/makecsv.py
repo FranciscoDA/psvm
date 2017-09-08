@@ -13,5 +13,5 @@ if __name__ == '__main__':
 		im = Image.open(f)
 		w,h = im.size
 		#print(dir(im))
-		a = ','.join(str(get_gray(im,x,y)) for x in range(0, w) for y in range(0, h))
+		a = ','.join(str(get_gray(im,x,y)) for y in range(0, h) for x in range(0, w))
 		print(a)
