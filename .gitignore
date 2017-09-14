@@ -4,4 +4,5 @@ bin/*
 cubin/*
 !mnist/README.md
 !mnist/dump.py
+!mnist/get.sh
 *.out
