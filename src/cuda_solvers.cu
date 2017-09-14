@@ -2,10 +2,10 @@
 #ifndef _CUDA_SOLVERS_H_
 #define _CUDA_SOLVERS_H_
 
-#include <iostream>
 #include <limits>
 #include <numeric>
 #include <cmath>
+#include <algorithm>
 
 #include "svm.h"
 
@@ -90,11 +90,9 @@ H cu_mr_wrapper(size_t n, H* d_buf, F mapping, G reduction) {
 	const size_t kernel_capacity = BLOCK_SIZE*GRID_SIZE*2;
 	size_t i = 0;
 	for (; i + kernel_capacity < n; i+= kernel_capacity) {
-		cout << "run k" << endl;
 		cu_mr<<<GRID_SIZE, BLOCK_SIZE>>>(i, d_buf, mapping, reduction, i > 0);
 	}
 	if (i < n) {
-		//cout << "run tail from " << i << " to " << n << endl;
 		cu_mr_tail<<<GRID_SIZE, BLOCK_SIZE>>>(i, n, d_buf, mapping, reduction, i > 0);
 	}
 	cudaMemcpy(h_buf, d_buf, sizeof(H) * GRID_SIZE, cudaMemcpyDeviceToHost);
@@ -212,57 +210,6 @@ unsigned int smo(SVMT& svm, const vector<double>& x, const vector<double>& y, do
 template<typename SVMT>
 void mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon, double C) {
 
-}
-
-template<typename SVMT>
-double decision(const SVMT& svm, const double* x) {
-	double sum = svm.getBias();
-	for (int i = 0; i < svm.getSVAlphaY().size(); ++i) {
-		sum += svm.getSVAlphaY()[i] * svm.kernel(&svm.getSVX()[i*svm.getD()], x);
-	}
-	return sum;
-}
-template<typename SVMT>
-double test(const SVMT& svm, const vector<double>& x, const vector<double>& y) {
-	unsigned int hits = 0;
-	for (unsigned int i = 0; i < y.size(); i++) {
-		double d = decision(svm, &x[i * x.size() / y.size()]);
-		if (d > 0 and y[i] == 1 or d < 0 and y[i] == -1)
-			hits++;
-	}
-	return double(hits) / double(y.size());
-}
-template<typename SVMT>
-int predict1AA(const vector<SVMT>& classifiers, const double* x) {
-	int best = 0;
-	double best_score = decision(classifiers[0], x);
-	for (unsigned int j = 1; j < classifiers.size(); ++j) {
-		double score = decision(classifiers[j], x);
-		if (score > best_score) {
-			best_score = score;
-			best = j;
-		}
-	}
-	return best;
-}
-template<typename SVMT>
-unsigned int test1AA(vector<SVMT>& classifiers, const vector<double>& x, const vector<double>& y) {
-	unsigned int hits = 0;
-	for (unsigned int i = 0; i < y.size(); ++i) {
-		double best = 0.0;
-		double best_score = decision(classifiers[0], &x[i * x.size() / y.size()]);
-		for (unsigned int j = 1; j < classifiers.size(); ++j) {
-			double score = classifiers[j].decision(&x[i * x.size() / y.size()]);
-			if (score > best_score) {
-				best_score = score;
-				best = j;
-			}
-		}
-		if (best == y[i]) {
-			++hits;
-		}
-	}
-	return hits;
 }
 
 #endif

@@ -4,8 +4,11 @@
 #ifdef __CUDACC__
 #include "cuda_solvers.cu"
 #else
-#include "sequential_solvers.cpp"
+#include "sequential_solvers.h"
 #endif
+
+#include "classifier.h"
+#include "io_formats.h"
 #include "optparse/optparse.h"
 
 #include <cmath>
@@ -13,110 +16,26 @@
 #include <vector>
 #include <string>
 #include <iostream>
-#include <fstream>
-#include <sstream>
 #include <set>
 
 using namespace std;
 
-struct DatasetError {
-	enum ErrorCode {
-		INCONSISTENT_D,
-		INVALID_Y,
-		HEADER_MISMATCH,
-		INVALID_TYPE,
-	};
-
-	ErrorCode code;
-	size_t position;
-};
-
-void readCSV(vector<double>& x, string path) {
-	size_t n = 0;
-	size_t d = 0;
-	fstream dataset(path, ios_base::in);
-	while (!dataset.eof()) {
-		string line;
-		dataset >> line;
-		if (!line.length()) // empty line
-		continue;
-		stringstream ss(line);
-		double val;
-		ss >> val;
-		ss.ignore(1, ',');
-		size_t this_d = 1;
-		while (!ss.eof()) {
-			x.push_back(val);
-			ss >> val;
-			ss.ignore(1, ',');
-			++this_d;
-		}
-		x.push_back(val);
-		n++;
-		if (this_d != d) {
-			if (n == 1) d = this_d;
-			else throw DatasetError {DatasetError::ErrorCode::INCONSISTENT_D, n};
-		}
-	}
-}
-int readBinaryIntBE(istream& x, size_t len) {
-	int v = 0;
-	for (; len > 0; --len)
-	v = v*256 + x.get();
-	return v;
-}
-void readIDX(vector<double>& x, string path) {
-	fstream dataset(path, ios_base::in | ios_base::binary);
-	for (int i = 0; i < 2; ++i)
-		if (dataset.get() != 0)
-			throw DatasetError {DatasetError::ErrorCode::HEADER_MISMATCH, 0};
-	int type = dataset.get();
-	size_t d = dataset.get();
-	size_t dn = 1;
-	for (int i = 0; i < d; ++i) {
-		size_t s = readBinaryIntBE(dataset, 4);
-		dn *= s;
-	}
-	x.reserve(dn);
-	for (size_t i = 0; i < dn; ++i) {
-		switch(type) {
-			case 0x08: // unsigned byte
-				x.push_back((double)readBinaryIntBE(dataset, 1));
-				break;
-			case 0x0B: // short
-				x.push_back((double)readBinaryIntBE(dataset, 2));
-				break;
-			case 0x0C:
-				x.push_back((double)readBinaryIntBE(dataset, 4));
-				break;
-			case 0x0D:
-				float fl;
-				dataset >> fl;
-				x.push_back(fl);
-				break;
-			case 0x0E:
-				double db;
-				dataset >> db;
-				x.push_back(db);
-				break;
-			default:
-				throw DatasetError {DatasetError::ErrorCode::INVALID_TYPE, i};
-		}
-	}
-}
-
-template<typename KT, typename ...KARG>
+template<typename KT, SVC_TYPE ST, typename ...KARG>
 void trainAndMaybeTest(
 	const vector<double>& x, const vector<double>& y,
 	const vector<double>& tx, const vector<double>& ty,
-	const vector<double>& px,
-	double C, KARG... kargs
+	const vector<double>& px, double C, SVC_TYPE svctype,
+	KARG... kargs
 ) {
+	typedef SVM<KT> SVMT;
+	typedef SVC<SVMT, ST> SVCT;
 	set<double> classes(begin(y), end(y));
+	vector<double> vec_classes(begin(classes), end(classes));
+
 	if (classes.size() == 2 and classes.find(1.0) != end(classes) and classes.find(-1.0) != end(classes)) {
 		cout << "Two class classification (y_i in {-1, 1})" << endl;
 		cout << "Training with SMO" << endl;
-		SVM<KT> svm(x.size() / y.size(), KT(kargs...));
+		SVMT svm(x.size() / y.size(), KT(kargs...));
 		clock_t start = clock();
 		unsigned int iterations = smo(svm, x, y, 0.01, C);
 		clock_t end = clock();
@@ -137,30 +56,38 @@ void trainAndMaybeTest(
 		}
 	}
 	else {
-		cout << "Multi-class classification (one vs all) - " << classes.size() << " classes" << endl;
-		vector<SVM<KT>> classifiers;
+		vector<SVMT> classifiers;
 		double elapsed_final = 0.0;
 		unsigned int nsv_final = 0;
-		for (double label : classes) {
-			cout << "Training for label=" << label << endl;
-			vector<double> y1;
-			y1.reserve(y.size());
-			for (double y_i : y)
-				y1.push_back(y_i == label ? 1.0 : -1.0);
-			SVM<KT> svm(x.size() / y.size(), KT(kargs...));
-			clock_t start = clock();
-			unsigned int iterations = smo(svm, x, y1, 0.01, C);
-			clock_t end = clock();
-			double elapsed = double(end-start)/CLOCKS_PER_SEC;
-			cout << "No. of SVs: " << svm.getSVAlphaY().size() << "(" << iterations << " iterations in " << elapsed << "s)" << endl;
-			classifiers.push_back(svm);
+
+		clock_t start;
+		auto accum = [&start, &elapsed_final, &nsv_final](const SVMT& svm, int iterations) {
+			double elapsed = double(clock() - start)/CLOCKS_PER_SEC;
 			elapsed_final += elapsed;
 			nsv_final += svm.getSVAlphaY().size();
+			cout << "#SVs: " << svm.getSVAlphaY().size() << "\ttime: " << elapsed << "s\t#iterations: " << iterations << endl;
+		};
+		if (ST == SVC_1AA) {
+			cout << "Multi-class classification (1AA) - " << classes.size() << " classes" << endl;
+			SVC<SVMT, SVC_1AA>::train(classifiers, vec_classes, x, y, C, [&start](double label) {
+					start = clock();
+					cout << "Training for label = " << label << endl;
+				}, accum, kargs...
+			);
 		}
-		cout << "Total of SVs: " << nsv_final << endl;
-		cout << "Total training time: " << elapsed_final << "s" << endl;
+		else if (ST == SVC_1A1) {
+			cout << "Multi-class classification (1A1) - " << classes.size() << " classes" << endl;
+			SVC<SVMT, SVC_1A1>::train(classifiers, vec_classes, x, y, C, [&start](double plus, double minus) {
+					start = clock();
+					cout << "Training for " << plus << " against " << minus << endl;
+				}, accum, kargs...
+			);
+		}
+		cout << "Total" << endl;
+		cout << "#SVs: " << nsv_final << "\ttime: " << elapsed_final << "s" << endl;
+
 		if (ty.size() > 0) {
-			unsigned int hits = test1AA(classifiers, tx, ty);
+			unsigned int hits = testSVC<SVMT, SVCT>(classifiers, classes.size(), tx, ty);
 			double accuracy = double(hits)/double(ty.size());
 			cout << "Model accuracy: " << hits << "/" << ty.size() << " = " << accuracy << endl;
 		}
@@ -168,8 +95,8 @@ void trainAndMaybeTest(
 			cout << "Predictions:" << endl;
 			size_t d = x.size()/y.size();
 			for (unsigned int i = 0; i < px.size()/d; ++i) {
-				int k = predict1AA(classifiers, &px[i*d]);
-				cout << i << ". " << k << endl;
+				int k = SVCT::predict(classifiers, classes.size(), &px[i*d]);
+				cout << i << ") " << k << endl;
 			}
 		}
 	}
@@ -213,13 +140,16 @@ int main(int argc, char** argv) {
 		.type("choice").choices(begin(KERNEL_OPTIONS), end(KERNEL_OPTIONS))
 		.help("Specifies the svm kernel to use (linear|poly|rbf)");
 	parser.add_option("--gamma").dest("kernel-gamma").type("double").help("Specifies the gamma factor for RBF kernel (gamma>0)");
-	parser.add_option("--power").dest("kernel-p").type("double").help("Specifies the p power for polynomial kernel");
+	parser.add_option("--degree").dest("kernel-d").type("double").help("Specifies the degree for polynomial kernel");
 	parser.add_option("--constant").dest("kernel-c").type("double").help("Specifies the c constant for polynomial kernel (set c=0 to use homogeneous)");
 
 	parser.add_option("--predict-attributes").dest("predict-attributes").help("Specifies predict dataset with attributes (optional)");
 	parser.add_option("--predict-format").dest("predict-format")
 		.type("choices").choices(begin(FORMAT_OPTIONS), end(FORMAT_OPTIONS))
 		.help("Specifies predict dataset format (csv|idx)");
+
+	parser.add_option("--1AA").action("store_true").help("Train and classify using one-against-all algorithm");
+	parser.add_option("--1A1").action("store_true").help("Train and classify using one-against-one algorithm");
 	const optparse::Values options = parser.parse_args(argc, argv);
 
 	double C = 1.0;
@@ -321,27 +251,38 @@ int main(int argc, char** argv) {
 		}
 	}
 
+	SVC_TYPE svctype = options.is_set("1A1") ? SVC_1A1 : SVC_1AA;
+
 	if (options.is_set("kernel")) {
 		if (options["kernel"] == "linear") {
 			cout << "Using linear kernel" << endl;
-			trainAndMaybeTest<LinearKernel>(x, y, test_x, test_y, predict_x, C);
+			if (svctype == SVC_1AA)
+				trainAndMaybeTest<LinearKernel, SVC_1AA>(x, y, test_x, test_y, predict_x, C, svctype);
+			else if (svctype == SVC_1A1)
+				trainAndMaybeTest<LinearKernel, SVC_1A1>(x, y, test_x, test_y, predict_x, C, svctype);
 		}
 		else if (options["kernel"] == "rbf") {
 			double gamma = 0.05;
 			if (options.is_set("kernel-gamma"))
 				gamma = double(options.get("kernel-gamma"));
 			cout << "Using RBF kernel with gamma=" << gamma << endl;
-			trainAndMaybeTest<RbfKernel>(x, y, test_x, test_y, predict_x, C, -gamma);
+			if (svctype == SVC_1AA)
+				trainAndMaybeTest<RbfKernel, SVC_1AA>(x, y, test_x, test_y, predict_x, C, svctype, -gamma);
+			else if (svctype == SVC_1A1)
+				trainAndMaybeTest<RbfKernel, SVC_1A1>(x, y, test_x, test_y, predict_x, C, svctype, -gamma);
 		}
 		else if (options["kernel"] == "poly") {
-			double p = 2.0;
+			double d = 2.0;
 			double c = 0.0;
-			if (options.is_set("kernel-p"))
-				p = double(options.get("kernel-p"));
+			if (options.is_set("kernel-d"))
+				d = double(options.get("kernel-d"));
 			if (options.is_set("kernel-c"))
 				c = double(options.get("kernel-c"));
-			cout << "Using Poly kernel with p=" << p << ", c=" << c << endl;
-			trainAndMaybeTest<PolynomialKernel>(x, y, test_x, test_y, predict_x, C, p, c);
+			cout << "Using Poly kernel with d=" << d << ", c=" << c << endl;
+			if (svctype == SVC_1AA)
+				trainAndMaybeTest<PolynomialKernel, SVC_1AA>(x, y, test_x, test_y, predict_x, C, svctype, d, c);
+			else if (svctype == SVC_1A1)
+				trainAndMaybeTest<PolynomialKernel, SVC_1A1>(x, y, test_x, test_y, predict_x, C, svctype, d, c);
 		}
 	}
 }

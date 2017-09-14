@@ -2,9 +2,9 @@
 #ifndef _SEQUENTIAL_SOLVERS_H_
 #define _SEQUENTIAL_SOLVERS_H_
 
-#include <iostream>
 #include <limits>
 #include <numeric>
+#include <algorithm>
 
 #include "svm.h"
 
@@ -102,8 +102,8 @@ unsigned int mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, do
 
 				int old_size = working_set.size();
 				for (auto it = begin(working_set); it != end(working_set);)
-				if (u[*it] > 0 and alpha[*it] >= C or u[*it] < 0 and alpha[*it] <= 0)
-				it = working_set.erase(it);
+				if ((u[*it] > 0 and alpha[*it] >= C) or (u[*it] < 0 and alpha[*it] <= 0))
+					it = working_set.erase(it);
 				else
 				++it;
 				if (old_size == working_set.size())
@@ -140,48 +140,6 @@ unsigned int mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, do
 	}
 	svm.fit(x, y, alpha, epsilon, C);
 	return iterations;
-}
-
-template<typename SVMT>
-double decision(const SVMT& svm, const double* x) {
-	double sum = svm.getBias();
-	for (int i = 0; i < svm.getSVAlphaY().size(); ++i) {
-		sum += svm.getSVAlphaY()[i] * svm.kernel(&svm.getSVX()[i*svm.getD()], x);
-	}
-	return sum;
-}
-template<typename SVMT>
-double test(const SVMT& svm, const vector<double>& x, const vector<double>& y) {
-	unsigned int hits = 0;
-	for (unsigned int i = 0; i < y.size(); i++) {
-		double d = decision(svm, &x[i * x.size() / y.size()]);
-		if (d > 0 and y[i] == 1 or d < 0 and y[i] == -1)
-			hits++;
-	}
-	return double(hits) / double(y.size());
-}
-template<typename SVMT>
-int predict1AA(const vector<SVMT>& classifiers, const double* x) {
-	int best = 0;
-	double best_score = decision(classifiers[0], x);
-	for (unsigned int j = 1; j < classifiers.size(); ++j) {
-		double score = decision(classifiers[j], x);
-		if (score > best_score) {
-			best_score = score;
-			best = j;
-		}
-	}
-	return best;
-}
-template<typename SVMT>
-unsigned int test1AA(const vector<SVMT>& classifiers, const vector<double>& x, const vector<double>& y) {
-	unsigned int hits = 0;
-	for (unsigned int i = 0; i < y.size(); ++i) {
-		double best = double(predict1AA(classifiers, &x[i * x.size() / y.size()]));
-		if (best == y[i])
-			++hits;
-	}
-	return hits;
 }
 
 #endif

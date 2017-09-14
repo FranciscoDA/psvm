@@ -1,7 +1,7 @@
 
 from PIL import Image
 
-with open('train-images.idx3-ubyte', 'rb') as f:
+with open('train-images-idx3-ubyte', 'rb') as f:
 	f.read(16)
 	for z in range(1,100):
 		im = Image.new('RGB',(28,28))

@@ -19,7 +19,7 @@ public:
 	{
 		double result = 0.0;
 		for (size_t i = 0; i < d; ++i)
-		result += x1[i] * x2[i];
+			result += x1[i] * x2[i];
 		return result;
 	}
 };
@@ -45,19 +45,20 @@ public:
 	PolynomialKernel(double d, double c) : _d(d), _c(c) {
 	}
 	CUDA_CALLABLE_MEMBER double K(const double* x1, const double* x2, size_t d) const {
-		double result = 0.0;
+		double result = _c;
 		for (size_t i = 0; i < d; ++i)
 			result += x1[i] * x2[i];
-		return pow(result + _c, _d);
+		return pow(result, _d);
 	}
 private:
-	double _c;
 	double _d;
+	double _c;
 };
 
 template<typename K>
 class SVM {
 public:
+	typedef K kernel_type;
 	SVM(size_t d, const K& k) : _d(d), _kernel(k) {
 	}
 

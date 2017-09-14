@@ -2,23 +2,33 @@
 CPP=g++
 CUDACC=nvcc
 CPPFLAGS=-std=c++11
-CUDACCFLAGS=$(CPPFLAGS) --expt-extended-lambda -x cu
+CUDACCFLAGS=-std c++11 --expt-extended-lambda -x cu --gpu-architecture compute_35 -lcuda -lcudart
 SRCDIR=src
-OUTDIR=bin
-DEPS=$(SRCDIR)/svm.h
+DEPS=$(SRCDIR)/svm.h $(SRCDIR)/io_formats.h $(SRCDIR)/classifier.h
 
-all: $(OUTDIR)/svm $(OUTDIR)/cusvm
+CPPOUTDIR=bin
+CPPDEPS=$(SRCDIR)/sequential_solvers.h $(DEPS)
 
-$(OUTDIR)/svm.o: $(SRCDIR)/main.cpp $(SRCDIR)/sequential_solvers.cpp $(DEPS)
-	$(CPP) $< $(CPPFLAGS) -c -o $@
+CUDAOUTDIR=cubin
+CUDADEPS=$(SRCDIR)/cuda_solvers.cu $(DEPS)
 
-$(OUTDIR)/svm: $(OUTDIR)/svm.o
-	$(CPP) $< $(CPPFLAGS) -o $@
+all: $(CPPOUTDIR) $(CUDAOUTDIR) $(CPPOUTDIR)/svm $(CUDAOUTDIR)/cusvm
 
-$(OUTDIR)/cusvm: $(SRCDIR)/main.cpp $(SRCDIR)/cuda_solvers.cu $(DEPS)
-	$(CUDACC) $< $(CUDACCFLAGS) -o $@
+$(CPPOUTDIR):
+	mkdir -p $@
+$(CUDAOUTDIR):
+	mkdir -p $@
+
+# sane, modular, C++ compliant compilation+linkage workflow
+$(CPPOUTDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
+	$(CPP) $< $(CPPFLAGS) -o $@ -c
+$(CPPOUTDIR)/svm: $(SRCDIR)/main.cpp $(CPPOUTDIR)/io_formats.o $(CPPDEPS)
+	$(CPP) $(filter-out $(CPPDEPS),$^) $(CPPFLAGS) -o $@
+
+# nvcc cant link c++ code -> compile everything in one go
+$(CUDAOUTDIR)/cusvm: $(SRCDIR)/main.cpp $(SRCDIR)/io_formats.cpp $(CUDADEPS)
+	$(CUDACC) $(filter-out $(CUDADEPS),$^) $(CUDACCFLAGS) -o $@
 
 clean:
-	rm -f $(OUTDIR)/svm.o
-	rm -f $(OUTDIR)/svm
-	rm -f $(OUTDIR)/cusvm
+	rm -rf $(CPPOUTDIR)
+	rm -rf $(CUDAOUTDIR)
