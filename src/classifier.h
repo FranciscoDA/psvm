@@ -87,7 +87,7 @@ public:
 					if (y[k] == classes[i] or y[k] == classes[j]) {
 						y1.push_back(y[k] == classes[i] ? 1.0 : -1.0);
 						for (int l = 0; l < d; l++)
-						 	x1.push_back(x[k*d+l]);
+							x1.push_back(x[k*d+l]);
 					}
 				}
 				cb_before(classes[i], classes[j]);

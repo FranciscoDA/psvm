@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
 
 	double C = 1.0;
 	if (options.is_set("cost"))
-	 	C = double(options.get("cost"));
+		C = double(options.get("cost"));
 	cout << "Using cost factor C=" << C << endl;
 
 	vector<double> x;
