@@ -1,8 +1,12 @@
 
 CPP=g++
 CUDACC=nvcc
-CPPFLAGS=-std=c++11
-CUDACCFLAGS=-std c++11 --expt-extended-lambda -x cu --gpu-architecture compute_35 -lcuda -lcudart
+
+CPPFLAGS=-std=c++14
+
+CUDAARCH=--gpu-architecture compute_35
+CUDACCFLAGS=-std=c++14 --expt-extended-lambda -x cu $(CUDAARCH)
+
 SRCDIR=src
 DEPS=$(SRCDIR)/svm.h $(SRCDIR)/io_formats.h $(SRCDIR)/classifier.h
 
@@ -22,12 +26,15 @@ $(CUDAOUTDIR):
 # sane, modular, C++ compliant compilation+linkage workflow
 $(CPPOUTDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
 	$(CPP) $< $(CPPFLAGS) -o $@ -c
-$(CPPOUTDIR)/svm: $(SRCDIR)/main.cpp $(CPPOUTDIR)/io_formats.o $(CPPDEPS)
+$(CPPOUTDIR)/svm: $(CPPOUTDIR)/main.o $(CPPOUTDIR)/io_formats.o $(CPPDEPS)
 	$(CPP) $(filter-out $(CPPDEPS),$^) $(CPPFLAGS) -o $@
 
 # nvcc cant link c++ code -> compile everything in one go
-$(CUDAOUTDIR)/cusvm: $(SRCDIR)/main.cpp $(SRCDIR)/io_formats.cpp $(CUDADEPS)
-	$(CUDACC) $(filter-out $(CUDADEPS),$^) $(CUDACCFLAGS) -o $@
+$(CUDAOUTDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
+	$(CUDACC) $< $(CUDACCFLAGS) -dc -o $@
+$(CUDAOUTDIR)/cusvm: $(CUDAOUTDIR)/io_formats.o $(CUDAOUTDIR)/main.o $(CUDADEPS)
+	$(CUDACC) -dlink $(CUDAARCH) $(filter-out $(CUDADEPS),$^) -o $(CUDAOUTDIR)/device_code.o
+	$(CUDACC) -link $(CUDAARCH) $(CUDAOUTDIR)/device_code.o $(filter-out $(CUDADEPS),$^) -o $@
 
 clean:
 	rm -rf $(CPPOUTDIR)

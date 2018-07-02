@@ -1,0 +1,3 @@
+[submodule "optparse"]
+	path = src/optparse
+	url = https://github.com/myint/optparse
