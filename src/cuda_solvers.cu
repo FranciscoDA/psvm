@@ -105,7 +105,7 @@ H cu_mr_wrapper(size_t n, H* d_buf, F mapping, G reduction) {
 }
 
 template<typename SVMT>
-__global__ void cusmo_update_gradient(size_t n, size_t d, SVMT* g_svm, double* g_x, double* g_y, double* g_alpha, double* g_g, double lambda, int i, int j)
+__global__ void cusmo_update_gradient(size_t n, size_t d, SVMT* g_svm, double* g_x, int* g_y, double* g_alpha, double* g_g, double lambda, int i, int j)
 {
 	unsigned int k = blockIdx.x * blockDim.x + threadIdx.x;
 	if (k >= n)
@@ -115,14 +115,14 @@ __global__ void cusmo_update_gradient(size_t n, size_t d, SVMT* g_svm, double* g
 	Kjk = g_svm->kernel(&g_x[j*d], &g_x[k*d]);
 	g_g[k] += lambda * g_y[k] * (Kjk - Kik);
 }
-__global__ void cusmo_update_alpha(double* g_y, double* g_alpha, int i, int j, double lambda) {
+__global__ void cusmo_update_alpha(int* g_y, double* g_alpha, int i, int j, double lambda) {
 	g_alpha[i] += g_y[i] * lambda;
 	g_alpha[j] -= g_y[j] * lambda;
 }
 
 /* sequential minimal optimization method */
 template<typename SVMT>
-unsigned int smo(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon, double C) {
+unsigned int smo(SVMT& svm, const vector<double>& x, const vector<int>& y, double epsilon, double C) {
 	size_t n = y.size();
 	size_t d = svm.getD();
 
@@ -130,18 +130,18 @@ unsigned int smo(SVMT& svm, const vector<double>& x, const vector<double>& y, do
 
 	SVMT* d_svm;
 	double* d_x;
-	double* d_y;
+	int* d_y;
 	double* d_alpha;
 	double* d_g;
 	cudaMalloc(&d_svm,    sizeof(SVMT));
 	cudaMalloc(&d_x,      sizeof(double) * x.size());
-	cudaMalloc(&d_y,      sizeof(double) * y.size());
+	cudaMalloc(&d_y,      sizeof(int) * y.size());
 	cudaMalloc(&d_alpha,  sizeof(double) * n);
 	cudaMalloc(&d_g,      sizeof(double) * n);
 
 	cudaMemcpy(d_svm, (void*) &svm,     sizeof(SVMT),            cudaMemcpyHostToDevice);
 	cudaMemcpy(d_x,   (void*) x.data(), sizeof(double)*x.size(), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_y,   (void*) y.data(), sizeof(double)*y.size(), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_y,   (void*) y.data(), sizeof(int)*y.size(),    cudaMemcpyHostToDevice);
 	cu_set<<<GRID_SIZE, BLOCK_SIZE>>>(n, d_alpha, 0.0);
 	cu_set<<<GRID_SIZE, BLOCK_SIZE>>>(n, d_g,     1.0);
 

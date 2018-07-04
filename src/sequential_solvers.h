@@ -12,7 +12,7 @@ using namespace std;
 
 /* sequential minimal optimization method implementation */
 template<typename SVMT>
-unsigned int smo(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon, double C) {
+unsigned int smo(SVMT& svm, const vector<double>& x, const vector<int>& y, double epsilon, double C) {
 	size_t n = y.size();
 	size_t d = svm.getD();
 	vector<double> alpha(n, 0.0);

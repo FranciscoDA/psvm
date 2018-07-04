@@ -13,10 +13,20 @@
 
 using namespace std;
 
-class LinearKernel {
+enum class KERNEL_TYPE {
+	LINEAR,
+	RBF,
+	POLYNOMIAL
+};
+
+template<KERNEL_TYPE KT>
+class Kernel {
+};
+
+template<>
+class Kernel<KERNEL_TYPE::LINEAR> {
 public:
-	CUDA_CALLABLE_MEMBER double K(const double* x1, const double* x2, size_t d) const
-	{
+	CUDA_CALLABLE_MEMBER double K(const double* x1, const double* x2, size_t d) const {
 		double result = 0.0;
 		for (size_t i = 0; i < d; ++i)
 			result += x1[i] * x2[i];
@@ -24,25 +34,25 @@ public:
 	}
 };
 
-class RbfKernel {
+template<>
+class Kernel<KERNEL_TYPE::RBF> {
 public:
-	RbfKernel(double gamma) : _gamma(gamma){
-
+	Kernel(double gamma) : _gamma(-gamma*gamma) {
 	}
-	CUDA_CALLABLE_MEMBER double K(const double* x1, const double* x2, size_t d) const
-	{
+	CUDA_CALLABLE_MEMBER double K(const double* x1, const double* x2, size_t d) const {
 		double result = 0.0;
 		for (size_t i = 0; i < d; ++i)
 			result += (x1[i] - x2[i]) * (x1[i] - x2[i]);
 		return exp(_gamma * result);
 	}
 private:
-	double _gamma;
+	const double _gamma;
 };
 
-class PolynomialKernel {
+template<>
+class Kernel<KERNEL_TYPE::POLYNOMIAL> {
 public:
-	PolynomialKernel(double d, double c) : _d(d), _c(c) {
+	Kernel(double d, double c) : _d(d), _c(c) {
 	}
 	CUDA_CALLABLE_MEMBER double K(const double* x1, const double* x2, size_t d) const {
 		double result = _c;
@@ -51,15 +61,14 @@ public:
 		return pow(result, _d);
 	}
 private:
-	double _d;
-	double _c;
+	const double _d;
+	const double _c;
 };
 
-template<typename K>
+template<KERNEL_TYPE KT>
 class SVM {
 public:
-	typedef K kernel_type;
-	SVM(size_t d, const K& k) : _d(d), _kernel(k) {
+	SVM(size_t d, const Kernel<KT>& k) : _d(d), _kernel(k), _b(0.0) {
 	}
 
 	size_t getD() const {
@@ -68,7 +77,7 @@ public:
 	double getBias() const {
 		return _b;
 	}
-	void fit(const std::vector<double>& x, const std::vector<double>& y, const std::vector<double>& alpha, double epsilon, double C) {
+	void fit(const std::vector<double>& x, const std::vector<int>& y, const std::vector<double>& alpha, double epsilon, double C) {
 		_sv_x.clear();
 		_sv_alpha_y.clear();
 		for (int i = 0; i < y.size(); ++i) {
@@ -78,22 +87,29 @@ public:
 			}
 		}
 		// calculate b from a support vector that lies on a margin (ie: 0 < alpha_i < C)
-		_b = 0;
+		double b_sum = 0.0;
+		double b_count = 0.0;
 		for (int i = 0; i < _sv_alpha_y.size(); ++i) {
-			if (_sv_alpha_y[i] < C) {
+			if (epsilon < _sv_alpha_y[i] && _sv_alpha_y[i] < C-epsilon) {
 				// sum alpha_i y_i K(x_j,sv_i) + b = 1
 				// 1 - sum alpha_i y_i K(x_j, sv_i) = b
-				_b = 1 - decision(&_sv_x[i * _d]);
-				break;
+				b_sum += 1.0 - decision(&_sv_x[i*_d]);
+				b_count += 1.0;
+			}
+			else if (-C+epsilon < _sv_alpha_y[i] && _sv_alpha_y[i] < -epsilon) {
+				// -1 - sum alpha_i y_i K(x_j, sv_i) = b
+				b_sum += -1.0 - decision(&_sv_x[i*_d]);
+				b_count += 1.0;
 			}
 		}
+		_b = b_sum/b_count; // b is averaged among the support vectors
 	}
 	double decision(const double* x) const {
-		double sum = 0.0;
+		double sum = _b;
 		for (int i = 0; i < _sv_alpha_y.size(); ++i) {
 			sum += _sv_alpha_y[i] * kernel(&_sv_x[i*_d], x);
 		}
-		return sum+_b;
+		return sum;
 	}
 
 	bool predict(const double* x) const {
@@ -110,24 +126,19 @@ public:
 	const std::vector<double>& getSVAlphaY() const {
 		return _sv_alpha_y;
 	}
+	size_t getSupportVectorCount() const {
+		return _sv_alpha_y.size();
+	}
 private:
 	size_t _d;
 	double _b;
 	std::vector<double> _sv_alpha_y; // alpha_i * y_i of each sv
 	std::vector<double> _sv_x;       // x_i of each sv
-	const K _kernel;
+	const Kernel<KT> _kernel;
 };
 
 template<typename SVMT>
 double decision(const SVMT& svm, const double* x);
 
-template<typename SVMT>
-double test(const SVMT& svm, const vector<double>& x, const vector<double>& y);
-
-template<typename SVMT>
-int predict1AA(const vector<SVMT>& classifiers, const double* x);
-
-template<typename SVMT>
-unsigned int test1AA(const vector<SVMT>& classifiers, const vector<double>& x, const vector<double>& y);
 
 #endif

@@ -12,7 +12,7 @@
 #include "optparse/optparse.h"
 
 #include <cmath>
-#include <ctime>
+#include <chrono>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -20,84 +20,82 @@
 
 using namespace std;
 
-template<typename KT, SVC_TYPE ST, typename ...KARG>
-void trainAndMaybeTest(
-	const vector<double>& x, const vector<double>& y,
-	const vector<double>& tx, const vector<double>& ty,
-	const vector<double>& px, double C, SVC_TYPE svctype,
-	KARG... kargs
+template<KERNEL_TYPE KT, SVC_TYPE SVCT>
+void do_test_predict(
+	const vector<double>& tx, const vector<int>& ty,
+	const vector<double>& px, const SVC<KT, SVCT>& svc
 ) {
-	typedef SVM<KT> SVMT;
-	typedef SVC<SVMT, ST> SVCT;
-	set<double> classes(begin(y), end(y));
-	vector<double> vec_classes(begin(classes), end(classes));
-
-	if (classes.size() == 2 and classes.find(1.0) != end(classes) and classes.find(-1.0) != end(classes)) {
-		cout << "Two class classification (y_i in {-1, 1})" << endl;
-		cout << "Training with SMO" << endl;
-		SVMT svm(x.size() / y.size(), KT(kargs...));
-		clock_t start = clock();
-		unsigned int iterations = smo(svm, x, y, 0.01, C);
-		clock_t end = clock();
-		double elapsed = double(end-start)/CLOCKS_PER_SEC;
-		cout << "No. of SVs: " << svm.getSVAlphaY().size() << "(" << iterations << " iterations in " << elapsed << "s)" << endl;
-		if (ty.size() > 0) {
-			unsigned int hits = test(svm, tx, ty);
-			double accuracy = double(hits)/double(ty.size());
-			cout << "Model accuracy: " << hits << "/" << ty.size() << " = " << accuracy << endl;
-		}
-		if (px.size() > 0) {
-			cout << "Predictions:" << endl;
-			size_t d = x.size()/y.size();
-			for (unsigned int i = 0; i < px.size()/d; ++i) {
-				double dval = decision(svm, &px[i*d]);
-				cout << i << ". " << (dval>0?"1":"-1") << endl;
-			}
+	if (ty.size() > 0) {
+		unsigned int hits = testSVC(svc, tx, ty);
+		double accuracy = double(hits)/double(ty.size());
+		cout << "Model accuracy: " << hits << "/" << ty.size() << " = " << accuracy << endl;
+	}
+	if (px.size() > 0) {
+		cout << "Predictions:" << endl;
+		for (int i = 0; i < px.size()/svc.getD(); ++i) {
+			cout << i << ". " << svc.predict(&px[i*svc.getD()]) << endl;
 		}
 	}
-	else {
-		vector<SVMT> classifiers;
-		double elapsed_final = 0.0;
-		unsigned int nsv_final = 0;
+}
 
-		clock_t start;
-		auto accum = [&start, &elapsed_final, &nsv_final](const SVMT& svm, int iterations) {
-			double elapsed = double(clock() - start)/CLOCKS_PER_SEC;
-			elapsed_final += elapsed;
-			nsv_final += svm.getSVAlphaY().size();
-			cout << "#SVs: " << svm.getSVAlphaY().size() << "\ttime: " << elapsed << "s\t#iterations: " << iterations << endl;
-		};
-		if (ST == SVC_1AA) {
-			cout << "Multi-class classification (1AA) - " << classes.size() << " classes" << endl;
-			SVC<SVMT, SVC_1AA>::train(classifiers, vec_classes, x, y, C, [&start](double label) {
-					start = clock();
-					cout << "Training for label = " << label << endl;
-				}, accum, kargs...
+template<KERNEL_TYPE KT>
+void do_main(
+	const vector<double>& x, const vector<int>& y,
+	const vector<double>& tx, const vector<int>& ty,
+	const vector<double>& px, const double C, SVC_TYPE svctype,
+	const Kernel<KT>& kernel, const int num_classes
+) {
+	switch (svctype) {
+		case SVC_TYPE::OAA: {
+			cout << "One-against-all classification" << endl;
+			SVC<KT, SVC_TYPE::OAA> svc(num_classes, x.size() / y.size(), kernel);
+			auto start_t = chrono::system_clock::now();
+			svc.train(x, y, C,
+				[&start_t](int i) {
+					cout << "Training " << i << " vs. all" << endl;
+					start_t = chrono::system_clock::now();
+				},
+				[start_t](unsigned int nsvs, unsigned int iters) {
+					auto end_t = chrono::system_clock::now();
+					chrono::duration<double> elapsed = end_t-start_t;
+					cout << "#SVs: " << nsvs << "(" << iters << " iterations in " << elapsed.count() << "s)" << endl;
+				}
 			);
+			do_test_predict(tx, ty, px, svc);
+			break;
 		}
-		else if (ST == SVC_1A1) {
-			cout << "Multi-class classification (1A1) - " << classes.size() << " classes" << endl;
-			SVC<SVMT, SVC_1A1>::train(classifiers, vec_classes, x, y, C, [&start](double plus, double minus) {
-					start = clock();
-					cout << "Training for " << plus << " against " << minus << endl;
-				}, accum, kargs...
+		case SVC_TYPE::OAO: {
+			cout << "One-against-one classification" << endl;
+			SVC<KT, SVC_TYPE::OAO> svc(num_classes, x.size() / y.size(), kernel);
+			auto start_t = chrono::system_clock::now();
+			svc.train(x, y, C,
+				[&start_t](int i, int j) {
+					cout << "Training " << i << " vs. " << j << endl;
+					start_t = chrono::system_clock::now();
+				},
+				[start_t](unsigned int nsvs, unsigned int iters) {
+					auto end_t = chrono::system_clock::now();
+					chrono::duration<double> elapsed = end_t-start_t;
+					cout << "#SVs: " << nsvs << "(" << iters << " iterations in " << elapsed.count() << "s)" << endl;
+				}
 			);
+			do_test_predict(tx, ty, px, svc);
+			break;
 		}
-		cout << "Total" << endl;
-		cout << "#SVs: " << nsv_final << "\ttime: " << elapsed_final << "s" << endl;
-
-		if (ty.size() > 0) {
-			unsigned int hits = testSVC<SVMT, SVCT>(classifiers, classes.size(), tx, ty);
-			double accuracy = double(hits)/double(ty.size());
-			cout << "Model accuracy: " << hits << "/" << ty.size() << " = " << accuracy << endl;
-		}
-		if (px.size() > 0) {
-			cout << "Predictions:" << endl;
-			size_t d = x.size()/y.size();
-			for (unsigned int i = 0; i < px.size()/d; ++i) {
-				int k = SVCT::predict(classifiers, classes.size(), &px[i*d]);
-				cout << i << ") " << k << endl;
-			}
+		case SVC_TYPE::TWOCLASS: {
+			cout << "Two class classification" << endl;
+			SVC<KT, SVC_TYPE::TWOCLASS> svc(x.size() / y.size(), kernel);
+			auto start_t = chrono::system_clock::now();
+			svc.train(x, y, C,
+				[](int i, int j) { cout << "Training " << i << " vs. " << j << endl; },
+				[&start_t](unsigned int nsvs, unsigned int iters) {
+					auto end_t = chrono::system_clock::now();
+					chrono::duration<double> elapsed = end_t-start_t;
+					cout << "#SVs: " << nsvs << "(" << iters << " iterations in " << elapsed.count() << "s)" << endl;
+				}
+			);
+			do_test_predict(tx, ty, px, svc);
+			break;
 		}
 	}
 }
@@ -150,6 +148,7 @@ int main(int argc, char** argv) {
 
 	parser.add_option("--1AA").action("store_true").help("Train and classify using one-against-all algorithm");
 	parser.add_option("--1A1").action("store_true").help("Train and classify using one-against-one algorithm");
+	parser.add_option("--TWOCLASS").action("store_true").help("Train and classify using two-class algorithm");
 	const optparse::Values options = parser.parse_args(argc, argv);
 
 	double C = 1.0;
@@ -158,10 +157,10 @@ int main(int argc, char** argv) {
 	cout << "Using cost factor C=" << C << endl;
 
 	vector<double> x;
-	vector<double> y;
+	vector<int> y;
 
 	vector<double> test_x;
-	vector<double> test_y;
+	vector<int> test_y;
 
 	vector<double> predict_x;
 
@@ -200,6 +199,7 @@ int main(int argc, char** argv) {
 		}
 	}
 	catch (DatasetError e) {
+		cerr << "ERROR: ";
 		switch (e.code) {
 			case DatasetError::INCONSISTENT_D:
 				cerr << "number of attributes in example don't match with the rest of the dataset";
@@ -230,7 +230,15 @@ int main(int argc, char** argv) {
 		test_x.resize(test_size*(x.size() / y.size()));
 		test_y.resize(test_size);
 	}
-	cout << x.size() << " datapoints divided between " << y.size() << " instances" << endl;
+
+	std::set<int> y_set(begin(y), end(y));
+	int num_classes = y_set.size();
+	cout << x.size() << " datapoints divided between " << y.size() << " instances and " << num_classes << " classes" << endl;
+	for (int i = 0; i < num_classes; i++) {
+		if (y_set.find(i) == end(y_set)) {
+			cerr << "ERROR: classes are not contiguous" << endl;
+		}
+	}
 
 	if (options.is_set("normalize-zero-one")) {
 		double _min = x[0];
@@ -251,25 +259,28 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	SVC_TYPE svctype = options.is_set("1A1") ? SVC_1A1 : SVC_1AA;
+	SVC_TYPE svctype;
+	if (options.is_set("1A1")) {
+		svctype = SVC_TYPE::OAO;
+	}
+	else if (options.is_set("1AA")) {
+		svctype = SVC_TYPE::OAA;
+	}
+	else if (options.is_set("TWOCLASS")) {
+		svctype = SVC_TYPE::TWOCLASS;
+	}
 
 	if (options.is_set("kernel")) {
 		if (options["kernel"] == "linear") {
 			cout << "Using linear kernel" << endl;
-			if (svctype == SVC_1AA)
-				trainAndMaybeTest<LinearKernel, SVC_1AA>(x, y, test_x, test_y, predict_x, C, svctype);
-			else if (svctype == SVC_1A1)
-				trainAndMaybeTest<LinearKernel, SVC_1A1>(x, y, test_x, test_y, predict_x, C, svctype);
+			do_main<KERNEL_TYPE::LINEAR>(x, y, test_x, test_y, predict_x, C, svctype, Kernel<KERNEL_TYPE::LINEAR>(), num_classes);
 		}
 		else if (options["kernel"] == "rbf") {
 			double gamma = 0.05;
 			if (options.is_set("kernel-gamma"))
 				gamma = double(options.get("kernel-gamma"));
 			cout << "Using RBF kernel with gamma=" << gamma << endl;
-			if (svctype == SVC_1AA)
-				trainAndMaybeTest<RbfKernel, SVC_1AA>(x, y, test_x, test_y, predict_x, C, svctype, -gamma);
-			else if (svctype == SVC_1A1)
-				trainAndMaybeTest<RbfKernel, SVC_1A1>(x, y, test_x, test_y, predict_x, C, svctype, -gamma);
+			do_main<KERNEL_TYPE::RBF>(x, y, test_x, test_y, predict_x, C, svctype, Kernel<KERNEL_TYPE::RBF>(gamma), num_classes);
 		}
 		else if (options["kernel"] == "poly") {
 			double d = 2.0;
@@ -279,10 +290,7 @@ int main(int argc, char** argv) {
 			if (options.is_set("kernel-c"))
 				c = double(options.get("kernel-c"));
 			cout << "Using Poly kernel with d=" << d << ", c=" << c << endl;
-			if (svctype == SVC_1AA)
-				trainAndMaybeTest<PolynomialKernel, SVC_1AA>(x, y, test_x, test_y, predict_x, C, svctype, d, c);
-			else if (svctype == SVC_1A1)
-				trainAndMaybeTest<PolynomialKernel, SVC_1A1>(x, y, test_x, test_y, predict_x, C, svctype, d, c);
+			do_main<KERNEL_TYPE::POLYNOMIAL>(x, y, test_x, test_y, predict_x, C, svctype, Kernel<KERNEL_TYPE::POLYNOMIAL>(d, c), num_classes);
 		}
 	}
 }
