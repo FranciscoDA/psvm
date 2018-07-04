@@ -44,6 +44,7 @@ void readCSV(vector<T>& x, string path) {
 }
 template void readCSV(vector<double>& x, string path);
 template void readCSV(vector<string>& x, string path);
+template void readCSV(vector<int>& x, string path);
 
 template <typename T>
 void readIDX(vector<T>& x, string path) {
@@ -86,6 +87,7 @@ void readIDX(vector<T>& x, string path) {
 	}
 }
 template void readIDX(vector<double>& x, string path);
+template void readIDX(vector<int>& x, string path);
 
 template<>
 void readIDX<string> (vector<string>& x, string path) {
