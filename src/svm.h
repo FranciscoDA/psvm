@@ -37,7 +37,7 @@ public:
 template<>
 class Kernel<KERNEL_TYPE::RBF> {
 public:
-	Kernel(double gamma) : _gamma(-gamma*gamma) {
+	Kernel(double gamma) : _gamma(-2*gamma*gamma) {
 	}
 	CUDA_CALLABLE_MEMBER double K(const double* x1, const double* x2, size_t d) const {
 		double result = 0.0;
