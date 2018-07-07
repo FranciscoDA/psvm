@@ -1,8 +1,8 @@
 __pycache__
 mnist/*
-bin/*
-cubin/*
-!mnist/README.md
-!mnist/dump.py
-!mnist/get.sh
+bin/
+cubin/
+!mnist/*.md
+!mnist/*.py
+!mnist/*.sh
 *.out
