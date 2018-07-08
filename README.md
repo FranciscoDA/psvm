@@ -26,7 +26,11 @@ Note that it is required that attributes and labels are in separate files.
  * Download submodules
    * `$ git submodule init`
    * `$ git submodule update`
+ * Create a build directory: `mkdir build`
+ * Go to the new directory: `cd build`
+ * Run cmake and (optionally) specify GPU architecture: `cmake .. -DCMAKE_CUDA_FLAGS="-arch=sm_30"`
  * `$ make`
+ * Now you can find the executables in the `build/bin` and `build/cubin` directories
 
 ## References / Recommended reads:
  * [Buttou, L., Lin, C. (2006). *Support Vector Machine Solvers*.](http://leon.bottou.org/publications/pdf/lin-2006.pdf)

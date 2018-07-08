@@ -1,8 +1,7 @@
 __pycache__
 mnist/*
-bin/
-cubin/
 !mnist/*.md
 !mnist/*.py
 !mnist/*.sh
 *.out
+build/
