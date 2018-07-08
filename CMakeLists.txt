@@ -2,12 +2,15 @@
 cmake_minimum_required (VERSION 3.0)
 project (psvm LANGUAGES CXX CUDA)
 
+SET (CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-extended-lambda")
+
 add_library    (io_formats src/io_formats.cpp)
-add_executable (cusvm src/main.cpp)
+
 add_executable (svm src/main.cpp)
+add_executable (cusvm src/main.cu)
 
 target_link_libraries (svm io_formats)
 target_link_libraries (cusvm io_formats)
 
 set_target_properties (svm PROPERTIES CXX_STANDARD 14 RUNTIME_OUTPUT_DIRECTORY bin)
-set_target_properties (cusvm PROPERTIES LINKER_LANGUAGE CUDA CUDA_STANDARD 14 RUNTIME_OUTPUT_DIRECTORY cubin)
+set_target_properties (cusvm PROPERTIES LINKER_LANGUAGE CUDA CUDA_STANDARD 14 RUNTIME_OUTPUT_DIRECTORY cubin CUDA_SEPARABLE_COMPILATION on)
