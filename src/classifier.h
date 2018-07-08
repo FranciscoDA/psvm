@@ -34,7 +34,7 @@ public:
 			transform(begin(y), end(y), begin(y1), [label](const int& y_i){ return y_i==label ? 1 : -1; });
 			cb_before(label);
 			_classifiers.emplace_back(_d, _kernel);
-			unsigned int iterations = smo(_classifiers.back(), x, y1, 0.01, C);
+			unsigned int iterations = smo(_classifiers.back(), x, y1, 0.001, C);
 			cb_after(_classifiers.back().getSupportVectorCount(), iterations);
 		}
 	}
@@ -82,7 +82,7 @@ public:
 				}
 				cb_before(i, j);
 				_classifiers.emplace_back(_d, _kernel);
-				unsigned int iterations = smo(_classifiers.back(), x1, y1, 0.01, C);
+				unsigned int iterations = smo(_classifiers.back(), x1, y1, 0.001, C);
 				cb_after(_classifiers.back().getSupportVectorCount(), iterations);
 			}
 		}
@@ -122,7 +122,7 @@ public:
 		vector<int> y1(y.size());
 		transform(begin(y), end(y), begin(y1), [](int y_i) { return y_i == 0 ? 1 : -1; });
 		cb_before(0, 1);
-		unsigned int iterations = smo(_svm, x, y1, 0.01, C);
+		unsigned int iterations = smo(_svm, x, y1, 0.001, C);
 		cb_after(_svm.getSupportVectorCount(), iterations);
 	}
 

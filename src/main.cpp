@@ -17,6 +17,7 @@
 #include <string>
 #include <iostream>
 #include <set>
+#include <algorithm>
 
 using namespace std;
 
@@ -26,7 +27,11 @@ void do_test_predict(
 	const vector<double>& px, const SVC<KT, SVCT>& svc
 ) {
 	if (ty.size() > 0) {
-		unsigned int hits = testSVC(svc, tx, ty);
+		unsigned int hits = 0;
+		for (int i = 0; i < ty.size(); ++i) {
+			if (svc.predict(&tx[i * svc.getD()]) == ty[i])
+				++hits;
+		}
 		double accuracy = double(hits)/double(ty.size());
 		cout << "Model accuracy: " << hits << "/" << ty.size() << " = " << accuracy << endl;
 	}
@@ -100,6 +105,57 @@ void do_main(
 	}
 }
 
+template <typename T>
+void do_read_data(const string& fn, vector<T>& out, string user_fmt_input) {
+	IO_FORMAT fmt = IO_FORMAT::NONE;
+	size_t ext_pos = fn.rfind(".");
+	if (ext_pos != string::npos) {
+		fmt = format_name_to_io_format(fn.substr(ext_pos+1));
+	}
+	if (user_fmt_input != "") {
+		fmt = format_name_to_io_format(user_fmt_input);
+	}
+	if (fmt != IO_FORMAT::NONE) {
+		cout << "Reading " << io_format_to_format_name(fmt) << " data from " << fn << endl;
+		read_dataset(out, fn, fmt);
+	}
+}
+
+void do_normalize_gaussian(vector<double>& x, const vector<double>& means, const vector<double>& stdevs, int attributes, int samples) {
+	cout << "normalizing" << attributes << "|" << samples << endl;
+	for (int j = 0; j < attributes; ++j) {
+		for (int i = 0; i < samples; ++i) {
+			double& v = x[i*attributes+j];
+			if (stdevs[j] == 0.)
+				v = 0.;
+			else
+				v = (v - means[j]) / stdevs[j];
+		}
+	}
+}
+void do_normalize_zero_one(vector<double>& x, const vector<double>& attribute_min, const vector<double>& attribute_max, int attributes, int samples) {
+	for (int j = 0; j < attributes; ++j) {
+		for (int i = 0; i < samples; ++i) {
+			double& v = x[i*attributes+j];
+			if (attribute_max[j] - attribute_min[j] == 0.)
+				v = 0.;
+			else
+				v = (v - attribute_min[j]) / (attribute_max[j] - attribute_min[j]);
+		}
+	}
+}
+void do_normalize_negone_one(vector<double>& x, const vector<double>& attribute_min, const vector<double>& attribute_max, int attributes, int samples) {
+	for (int j = 0; j < attributes; ++j) {
+		for (int i = 0; i < samples; ++i) {
+			double& v = x[i*attributes+j];
+			if (attribute_max[j] - attribute_min[j] == 0.)
+				v = 0.;
+			else
+				v = 2.0 * (v - attribute_min[j]) / (attribute_max[j] - attribute_min[j]) - 1.0;
+		}
+	}
+}
+
 int main(int argc, char** argv) {
 	#ifdef __CUDACC__
 	int nCudaDevices;
@@ -115,24 +171,26 @@ int main(int argc, char** argv) {
 	}
 	#endif
 
-	const vector<string> FORMAT_OPTIONS {"csv", "idx"};
 	const vector<string> KERNEL_OPTIONS {"linear", "poly", "rbf"};
+	const vector<string> NORMALIZATION_OPTIONS {"0-1", "gaussian", "-1-1"};
 	optparse::OptionParser parser;
 	parser.add_option("--train-attributes").dest("train-attributes").help("Specifies training dataset with attributes (required)");
 	parser.add_option("--train-labels").dest("train-labels").help("Specifies training dataset with labels (required)");
 	parser.add_option("--train-format").dest("train-format")
-		.type("choice").choices(begin(FORMAT_OPTIONS), end(FORMAT_OPTIONS))
+		.type("choice").choices(begin(IO_FORMAT_NAMES), end(IO_FORMAT_NAMES))
 		.help("Specifies training dataset format (csv|idx)");
 	parser.add_option("--train-n").dest("train-n").type("int").help("Specifies amount of training samples to use (optional)");
 
 	parser.add_option("--test-attributes").dest("test-attributes").help("Specifies testing dataset attributes (optional)");
 	parser.add_option("--test-labels").dest("test-labels").help("Specifies testing dataset labels (required if testing)");
 	parser.add_option("--test-format").dest("test-format")
-		.type("choice").choices(begin(FORMAT_OPTIONS), end(FORMAT_OPTIONS))
+		.type("choice").choices(begin(IO_FORMAT_NAMES), end(IO_FORMAT_NAMES))
 		.help("Specifies testing dataset format (csv|idx) (required if testing)");
 	parser.add_option("--test-n").dest("test-n").type("int").help("Specifies amount of testing samples to use (optional)");
 
-	parser.add_option("--normalize-zero-one").action("store_true").dest("normalize-zero-one").help("Preprocesses data to fit [0;1] range");
+	parser.add_option("--normalization").dest("normalization")
+		.type("choice").choices(begin(NORMALIZATION_OPTIONS), end(NORMALIZATION_OPTIONS))
+		.help("Specifies attribute normalization method (0-1|gaussian|-1-1)");
 	parser.add_option("--cost").dest("cost").type("double").help("Specifies the cost factor C");
 	parser.add_option("--kernel").dest("kernel")
 		.type("choice").choices(begin(KERNEL_OPTIONS), end(KERNEL_OPTIONS))
@@ -143,7 +201,7 @@ int main(int argc, char** argv) {
 
 	parser.add_option("--predict-attributes").dest("predict-attributes").help("Specifies predict dataset with attributes (optional)");
 	parser.add_option("--predict-format").dest("predict-format")
-		.type("choices").choices(begin(FORMAT_OPTIONS), end(FORMAT_OPTIONS))
+		.type("choices").choices(begin(IO_FORMAT_NAMES), end(IO_FORMAT_NAMES))
 		.help("Specifies predict dataset format (csv|idx)");
 
 	parser.add_option("--1AA").action("store_true").help("Train and classify using one-against-all algorithm");
@@ -166,36 +224,16 @@ int main(int argc, char** argv) {
 
 	cout << "Reading dataset..." << endl;
 	try {
-		if (options.is_set("train-attributes") and options.is_set("train-labels") and options.is_set("train-format")) {
-			cout << "Reading train data from " << options["train-attributes"] << " and " << options["train-labels"] << endl;
-			if (options["train-format"] == "csv") {
-				readCSV(x, options["train-attributes"]);
-				readCSV(y, options["train-labels"]);
-			}
-			else if (options["train-format"] == "idx") {
-				readIDX(x, options["train-attributes"]);
-				readIDX(y, options["train-labels"]);
-			}
+		if (options.is_set("train-attributes") and options.is_set("train-labels")) {
+			do_read_data(options["train-attributes"], x, options.is_set("train-format") ? options["train-format"] : "");
+			do_read_data(options["train-labels"],     y, options.is_set("train-format") ? options["train-format"] : "");
 		}
-		if (options.is_set("test-attributes") and options.is_set("test-labels") and options.is_set("test-format")) {
-			cout << "Reading test data from " << options["test-attributes"] << " and " << options["test-labels"] << endl;
-			if (options["test-format"] == "csv") {
-				readCSV(test_x, options["test-attributes"]);
-				readCSV(test_y, options["test-labels"]);
-			}
-			else if (options["test-format"] == "idx") {
-				readIDX(test_x, options["test-attributes"]);
-				readIDX(test_y, options["test-labels"]);
-			}
+		if (options.is_set("test-attributes") and options.is_set("test-labels")) {
+			do_read_data(options["test-attributes"], test_x, options.is_set("test-format") ? options["test-format"] : "");
+			do_read_data(options["test-labels"],     test_y, options.is_set("test-format") ? options["test-format"] : "");
 		}
-		if (options.is_set("predict-attributes") and options.is_set("predict-format")) {
-			cout << "Reading predict data from " << options["predict-attributes"] << endl;
-			if (options["predict-format"] == "csv") {
-				readCSV(predict_x, options["predict-attributes"]);
-			}
-			else if (options["predict-format"] == "idx") {
-				readIDX(predict_x, options["predict-attributes"]);
-			}
+		if (options.is_set("predict-attributes")) {
+			do_read_data(options["predict-attributes"], predict_x, options.is_set("predict-format") ? options["predict-format"] : "");
 		}
 	}
 	catch (DatasetError e) {
@@ -240,22 +278,43 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	if (options.is_set("normalize-zero-one")) {
-		double _min = x[0];
-		double _max = x[0];
-		for (double x_i : x) {
-			if (x_i < _min) _min = x_i;
-			if (_max < x_i) _max = x_i;
+	if (options.is_set("normalization")) {
+		int num_attributes = x.size() / y.size();
+		vector<double> attribute_max (num_attributes, -std::numeric_limits<double>::infinity());
+		vector<double> attribute_min (num_attributes, std::numeric_limits<double>::infinity());
+		vector<double> attribute_mean (num_attributes, 0);
+		vector<double> attribute_stdev (num_attributes, 0);
+
+		for (int j = 0; j < num_attributes; ++j) {
+			for (int i = 0; i < y.size(); ++i) {
+				double v = x[i*num_attributes+j];
+				attribute_max[j] = max(attribute_max[j], v);
+				attribute_min[j] = min(attribute_min[j], v);
+				attribute_mean[j] += v / double(y.size());
+			}
+			for (int i = 0; i < y.size(); ++i) {
+				double v = x[i*num_attributes+j];
+				attribute_stdev[j] += pow(v-attribute_mean[j], 2.0) / double(y.size());
+			}
+			attribute_stdev[j] = sqrt(attribute_stdev[j]);
 		}
-		cout << "Normalizing training set from [" << _min << ";" << _max << "] to [0;1]" << endl;
-		for(double& x_i : x) x_i = (x_i - _min) / (_max - _min);
-		if (test_y.size() > 0) {
-			cout << "Normalizing test set from [" << _min << ";" << _max << "] to [0;1]" << endl;
-			for(double& x_i : test_x) x_i = (x_i - _min) / (_max - _min);
+		if (options["normalization"] == "0-1") {
+			cout << "Normalizing attributes to [0;1] range" << endl;
+			do_normalize_zero_one(x, attribute_min, attribute_max, num_attributes, y.size());
+			do_normalize_zero_one(test_x, attribute_min, attribute_max, num_attributes, test_y.size());
+			do_normalize_zero_one(predict_x, attribute_min, attribute_max, num_attributes, predict_x.size()/num_attributes);
 		}
-		if (predict_x.size() > 0) {
-			cout << "Normalizing predict set from [" << _min << ";" << _max << "] to [0;1]" << endl;
-			for (double& x_i : predict_x) x_i = (x_i - _min) / (_max-_min);
+		else if (options["normalization"] == "-1-1") {
+			cout << "Normalizing attributes to [-1;1] range" << endl;
+			do_normalize_negone_one(x, attribute_min, attribute_max, num_attributes, y.size());
+			do_normalize_negone_one(test_x, attribute_min, attribute_max, num_attributes, test_y.size());
+			do_normalize_negone_one(predict_x, attribute_min, attribute_max, num_attributes, predict_x.size()/num_attributes);
+		}
+		else if (options["normalization"] == "gaussian") {
+			cout << "Normalizing attributes to (0;1) normal distribution" << endl;
+			do_normalize_gaussian(x, attribute_mean, attribute_stdev, num_attributes, y.size());
+			do_normalize_gaussian(test_x, attribute_mean, attribute_stdev, num_attributes, test_y.size());
+			do_normalize_gaussian(predict_x, attribute_mean, attribute_stdev, num_attributes, predict_x.size()/num_attributes);
 		}
 	}
 

@@ -56,7 +56,15 @@ unsigned int smo(SVMT& svm, const vector<double>& x, const vector<int>& y, doubl
 			g[k] += lambda * y[k] * (Kjk - Kik);
 		}
 		alpha[i] += y[i] * lambda;
+		if (alpha[i] < epsilon)
+			alpha[i] = 0;
+		else if (alpha[i] > C-epsilon)
+			alpha[i] = C;
 		alpha[j] -= y[j] * lambda;
+		if (alpha[j] < epsilon)
+			alpha[j] = 0;
+		else if (alpha[j] > C-epsilon)
+			alpha[j] = C;
 	}
 	svm.fit(x, y, alpha, epsilon, C);
 	return iterations;
