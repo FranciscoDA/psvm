@@ -7,10 +7,6 @@
 #include "sequential_solvers.h"
 #endif
 
-#include "classifier.h"
-#include "io_formats.h"
-#include "optparse/optparse.h"
-
 #include <cmath>
 #include <chrono>
 #include <vector>
@@ -18,6 +14,12 @@
 #include <iostream>
 #include <set>
 #include <algorithm>
+
+#include "optparse/optparse.h"
+
+#include "classifier.h"
+#include "io_formats.h"
+#include "normalization.h"
 
 using namespace std;
 
@@ -121,41 +123,6 @@ void do_read_data(const string& fn, vector<T>& out, string user_fmt_input) {
 	}
 }
 
-void do_normalize_gaussian(vector<double>& x, const vector<double>& means, const vector<double>& stdevs, int attributes, int samples) {
-	cout << "normalizing" << attributes << "|" << samples << endl;
-	for (int j = 0; j < attributes; ++j) {
-		for (int i = 0; i < samples; ++i) {
-			double& v = x[i*attributes+j];
-			if (stdevs[j] == 0.)
-				v = 0.;
-			else
-				v = (v - means[j]) / stdevs[j];
-		}
-	}
-}
-void do_normalize_zero_one(vector<double>& x, const vector<double>& attribute_min, const vector<double>& attribute_max, int attributes, int samples) {
-	for (int j = 0; j < attributes; ++j) {
-		for (int i = 0; i < samples; ++i) {
-			double& v = x[i*attributes+j];
-			if (attribute_max[j] - attribute_min[j] == 0.)
-				v = 0.;
-			else
-				v = (v - attribute_min[j]) / (attribute_max[j] - attribute_min[j]);
-		}
-	}
-}
-void do_normalize_negone_one(vector<double>& x, const vector<double>& attribute_min, const vector<double>& attribute_max, int attributes, int samples) {
-	for (int j = 0; j < attributes; ++j) {
-		for (int i = 0; i < samples; ++i) {
-			double& v = x[i*attributes+j];
-			if (attribute_max[j] - attribute_min[j] == 0.)
-				v = 0.;
-			else
-				v = 2.0 * (v - attribute_min[j]) / (attribute_max[j] - attribute_min[j]) - 1.0;
-		}
-	}
-}
-
 int main(int argc, char** argv) {
 	#ifdef __CUDACC__
 	int nCudaDevices;
@@ -172,7 +139,7 @@ int main(int argc, char** argv) {
 	#endif
 
 	const vector<string> KERNEL_OPTIONS {"linear", "poly", "rbf"};
-	const vector<string> NORMALIZATION_OPTIONS {"0-1", "gaussian", "-1-1"};
+	const vector<string> NORMALIZATION_OPTIONS {"0-1", "standard", "-1-1"};
 	optparse::OptionParser parser;
 	parser.add_option("--train-attributes").dest("train-attributes").help("Specifies training dataset with attributes (required)");
 	parser.add_option("--train-labels").dest("train-labels").help("Specifies training dataset with labels (required)");
@@ -190,7 +157,7 @@ int main(int argc, char** argv) {
 
 	parser.add_option("--normalization").dest("normalization")
 		.type("choice").choices(begin(NORMALIZATION_OPTIONS), end(NORMALIZATION_OPTIONS))
-		.help("Specifies attribute normalization method (0-1|gaussian|-1-1)");
+		.help("Specifies attribute normalization method (0-1|standard|-1-1)");
 	parser.add_option("--cost").dest("cost").type("double").help("Specifies the cost factor C");
 	parser.add_option("--kernel").dest("kernel")
 		.type("choice").choices(begin(KERNEL_OPTIONS), end(KERNEL_OPTIONS))
@@ -275,6 +242,7 @@ int main(int argc, char** argv) {
 	for (int i = 0; i < num_classes; i++) {
 		if (y_set.find(i) == end(y_set)) {
 			cerr << "ERROR: classes are not contiguous" << endl;
+			return 1;
 		}
 	}
 
@@ -300,21 +268,21 @@ int main(int argc, char** argv) {
 		}
 		if (options["normalization"] == "0-1") {
 			cout << "Normalizing attributes to [0;1] range" << endl;
-			do_normalize_zero_one(x, attribute_min, attribute_max, num_attributes, y.size());
-			do_normalize_zero_one(test_x, attribute_min, attribute_max, num_attributes, test_y.size());
-			do_normalize_zero_one(predict_x, attribute_min, attribute_max, num_attributes, predict_x.size()/num_attributes);
+			normalization_scale(x, attribute_min, attribute_max, 0., 1.);
+			normalization_scale(test_x, attribute_min, attribute_max, 0., 1.);
+			normalization_scale(predict_x, attribute_min, attribute_max, 0., 1.);
 		}
 		else if (options["normalization"] == "-1-1") {
 			cout << "Normalizing attributes to [-1;1] range" << endl;
-			do_normalize_negone_one(x, attribute_min, attribute_max, num_attributes, y.size());
-			do_normalize_negone_one(test_x, attribute_min, attribute_max, num_attributes, test_y.size());
-			do_normalize_negone_one(predict_x, attribute_min, attribute_max, num_attributes, predict_x.size()/num_attributes);
+			normalization_scale(x, attribute_min, attribute_max, -1., 1.);
+			normalization_scale(test_x, attribute_min, attribute_max, -1., 1.);
+			normalization_scale(predict_x, attribute_min, attribute_max, -1., 1.);
 		}
-		else if (options["normalization"] == "gaussian") {
+		else if (options["normalization"] == "standard") {
 			cout << "Normalizing attributes to (0;1) normal distribution" << endl;
-			do_normalize_gaussian(x, attribute_mean, attribute_stdev, num_attributes, y.size());
-			do_normalize_gaussian(test_x, attribute_mean, attribute_stdev, num_attributes, test_y.size());
-			do_normalize_gaussian(predict_x, attribute_mean, attribute_stdev, num_attributes, predict_x.size()/num_attributes);
+			normalization_standard(x, attribute_mean, attribute_stdev);
+			normalization_standard(test_x, attribute_mean, attribute_stdev);
+			normalization_standard(predict_x, attribute_mean, attribute_stdev);
 		}
 	}
 

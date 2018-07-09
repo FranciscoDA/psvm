@@ -58,9 +58,14 @@ void read_CSV(vector<T>& x, string path) {
 		}
 	}
 }
-template void read_CSV(vector<double>& x, string path);
-template void read_CSV(vector<string>& x, string path);
-template void read_CSV(vector<int>& x, string path);
+
+template <typename OUTTYPE, typename INTYPE>
+OUTTYPE cast_IDX_value(INTYPE input) {
+	if constexpr (is_same<OUTTYPE, string>::value)
+		return to_string(input);
+	else
+		return static_cast<OUTTYPE>(input);
+}
 
 template <typename T>
 void read_IDX(vector<T>& x, string path) {
@@ -79,66 +84,23 @@ void read_IDX(vector<T>& x, string path) {
 	for (size_t i = 0; i < dn; ++i) {
 		switch(type) {
 			case 0x08: // unsigned byte
-				x.push_back(T(readBinaryIntBE(dataset, 1)));
+				x.push_back(cast_IDX_value<T,char>(readBinaryIntBE(dataset, 1)));
 				break;
 			case 0x0B: // short
-				x.push_back(T(readBinaryIntBE(dataset, 2)));
+				x.push_back(cast_IDX_value<T,short>(readBinaryIntBE(dataset, 2)));
 				break;
 			case 0x0C:
-				x.push_back(T(readBinaryIntBE(dataset, 4)));
+				x.push_back(cast_IDX_value<T,int>(readBinaryIntBE(dataset, 4)));
 				break;
-			case 0x0D:
+			case 0x0D: // float
 				float fl;
 				dataset >> fl;
-				x.push_back(T(fl));
+				x.push_back(cast_IDX_value<T,float>(fl));
 				break;
-			case 0x0E:
+			case 0x0E: // double
 				double db;
 				dataset >> db;
-				x.push_back(T(db));
-				break;
-			default:
-				throw DatasetError {DatasetError::ErrorCode::INVALID_TYPE, i};
-		}
-	}
-}
-template void read_IDX(vector<double>& x, string path);
-template void read_IDX(vector<int>& x, string path);
-
-template<>
-void read_IDX<string> (vector<string>& x, string path) {
-	fstream dataset(path, ios_base::in | ios_base::binary);
-	for (int i = 0; i < 2; ++i)
-		if (dataset.get() != 0)
-			throw DatasetError {DatasetError::ErrorCode::HEADER_MISMATCH, 0};
-	int type = dataset.get();
-	size_t d = dataset.get();
-	size_t dn = 1;
-	for (int i = 0; i < d; ++i) {
-		size_t s = readBinaryIntBE(dataset, 4);
-		dn *= s;
-	}
-	x.reserve(dn);
-	for (size_t i = 0; i < dn; ++i) {
-		switch(type) {
-			case 0x08: // unsigned byte
-				x.push_back(to_string(readBinaryIntBE(dataset, 1)));
-				break;
-			case 0x0B: // short
-				x.push_back(to_string(readBinaryIntBE(dataset, 2)));
-				break;
-			case 0x0C:
-				x.push_back(to_string(readBinaryIntBE(dataset, 4)));
-				break;
-			case 0x0D:
-				float fl;
-				dataset >> fl;
-				x.push_back(to_string(fl));
-				break;
-			case 0x0E:
-				double db;
-				dataset >> db;
-				x.push_back(to_string(db));
+				x.push_back(cast_IDX_value<T,double>(db));
 				break;
 			default:
 				throw DatasetError {DatasetError::ErrorCode::INVALID_TYPE, i};
