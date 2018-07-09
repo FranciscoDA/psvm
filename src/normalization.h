@@ -30,7 +30,7 @@ void normalization_scale(
 		T range = attribute_max[j] - attribute_min[j];
 		for (int i = 0; i < num_samples; ++i) {
 			T& v = x[i*num_attributes+j];
-			v = range==0. ? expected : (v - attribute_min[j]) * (b - a) / range;
+			v = range==0. ? expected : a + (v - attribute_min[j]) * (b - a) / range;
 		}
 	}
 }
