@@ -9,9 +9,14 @@ Run `./svm --help` or `./cusvm --help` to see a list of parameters.
  * CSV
  * IDX (see the MNIST handwritten digit dataset format)
 
-Note that it is required that attributes and labels are in separate files.
+Note that attributes and labels must be in separate files.
 
-### Supported kernels
+### Supported normalization methods (--normalization flag):
+ * standard: (x-mean)/stdev. Each attribute is scaled according to the normal distribution
+ * -1-1: -1 + (x-min)\*(1-(-1))/(max-min). Each attribute is scaled to \[-1;1\] range
+ * 0-1: (x-min)/(max-min). Each attribute is scaled to \[0;1\] range
+
+### Supported kernels (--kernel flag)
  * Linear: xi \* xj
  * Polynomial: (xi\*xj+c)^d
  * Gaussian: exp(-||xi-xj||^2/(2\*gamma^2))
@@ -19,7 +24,7 @@ Note that it is required that attributes and labels are in separate files.
 ### Supported multiclass classification methods
  * 1A1 - One against one (trains k\*(k-1)/2 reduced models)
  * 1AA - One against all (trains k models)
- * TWOCLASS - Traditional two-class classification.
+ * TWOCLASS - Traditional two-class classification
 
 ## Compilation
  * Clone this repository
