@@ -4,27 +4,17 @@
 
 #include <vector>
 #include <algorithm>
-#include <ctime>
-#include <iostream>
 
 #include "svm.h"
 
 using namespace std;
 
-enum class SVC_TYPE {
-	OAA,
-	OAO,
-	TWOCLASS
-};
-
-template<KERNEL_TYPE KT, SVC_TYPE ST>
-struct SVC {
-};
-
-template<KERNEL_TYPE KT>
-class SVC<KT, SVC_TYPE::OAA> {
+template<typename KT>
+class OneAgainstAllSVC {
 public:
-	SVC(int classes, int d, const Kernel<KT>& kernel) : _classes(classes), _d(d), _kernel(kernel) {
+	using kernel_type = KT;
+
+	OneAgainstAllSVC(int classes, int d, const KT& kernel) : _classes(classes), _d(d), _kernel(kernel) {
 	}
 
 	template <typename F, typename G>
@@ -51,17 +41,19 @@ public:
 	int getD() const {
 		return _d;
 	}
+	const int _classes;
+	const KT _kernel;
 private:
 	vector<SVM<KT>> _classifiers;
-	const int _classes;
-	const Kernel<KT> _kernel;
 	const int _d;
 };
 
-template <KERNEL_TYPE KT>
-class SVC<KT, SVC_TYPE::OAO> {
+template <typename KT>
+class OneAgainstOneSVC {
 public:
-	SVC(int classes, int d, const Kernel<KT>& kernel) : _classes(classes), _d(d), _kernel(kernel) {
+	using kernel_type = KT;
+
+	OneAgainstOneSVC(int classes, int d, const KT& kernel) : _classes(classes), _d(d), _kernel(kernel) {
 	}
 
 	template<typename F, typename G>
@@ -73,17 +65,13 @@ public:
 				for (int k = 0; k < y.size(); k++) {
 					if (y[k] == i or y[k] == j) {
 						y1.push_back(y[k] == i ? 1 : -1);
-						auto x_begin = begin(x);
-						auto x_end = begin(x);
-						advance(x_begin, k*_d);
-						advance(x_end, (k+1)*_d);
-						x1.insert(end(x1), x_begin, x_end);
+						x1.insert(end(x1), begin(x) + k*_d, begin(x) + (k+1)*_d);
 					}
 				}
-				cb_before(i, j);
+				cb_before(i, j, y1.size());
 				_classifiers.emplace_back(_d, _kernel);
 				unsigned int iterations = smo(_classifiers.back(), x1, y1, 0.001, C);
-				cb_after(_classifiers.back().getSupportVectorCount(), iterations);
+				cb_after(_classifiers.back().getSupportVectorCount(), _classifiers.back().getBias(), iterations);
 			}
 		}
 	}
@@ -92,8 +80,8 @@ public:
 		vector<int> scores(_classes, 0);
 		int k = 0;
 		for (int i = 0; i < _classes-1; i++) {
-			for (int j = 0; j < _classes; j++) {
-				scores[_classifiers[k].decision(x) > 0 ? i : j]++;
+			for (int j = i+1; j < _classes; j++) {
+				scores[(_classifiers[k].decision(x) > 0. ? i : j)]++;
 				k++;
 			}
 		}
@@ -103,49 +91,11 @@ public:
 	int getD() const {
 		return _d;
 	}
+	const int _classes;
+	const KT _kernel;
 private:
 	vector<SVM<KT>> _classifiers;
-	const int _classes;
-	const Kernel<KT> _kernel;
 	const int _d;
 };
-
-template <KERNEL_TYPE KT>
-class SVC<KT, SVC_TYPE::TWOCLASS> {
-public:
-	SVC(int d, const Kernel<KT>& kernel) : _svm(d, kernel) {
-	}
-
-	template<typename F, typename G>
-	void train(const vector<double>& x, const vector<int>& y, const double C, F cb_before, G cb_after) {
-		unsigned int d = x.size() / y.size();
-		vector<int> y1(y.size());
-		transform(begin(y), end(y), begin(y1), [](int y_i) { return y_i == 0 ? 1 : -1; });
-		cb_before(0, 1);
-		unsigned int iterations = smo(_svm, x, y1, 0.001, C);
-		cb_after(_svm.getSupportVectorCount(), iterations);
-	}
-
-	int predict(const double* x) const {
-		return _svm.decision(x) > 0 ? 0 : 1;
-	}
-
-	int getD() const {
-		return _svm.getD();
-	}
-private:
-	SVM<KT> _svm;
-};
-
-template<KERNEL_TYPE KT, SVC_TYPE SVCT>
-unsigned int testSVC(const SVC<KT, SVCT>& svc, const vector<double>& x, const vector<int>& y) {
-	unsigned int hits = 0;
-	for (unsigned int i = 0; i < y.size(); ++i) {
-		int prediction = svc.predict(&x[i * x.size() / y.size()]);
-		if (prediction == y[i])
-			++hits;
-	}
-	return hits;
-}
 
 #endif

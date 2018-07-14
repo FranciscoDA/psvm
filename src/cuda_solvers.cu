@@ -195,7 +195,7 @@ unsigned int smo(SVMT& svm, const vector<double>& x, const vector<int>& y, doubl
 		alpha[i] += y[i] * lambda;
 		alpha[j] -= y[j] * lambda;
 	}
-	svm.fit(x, y, alpha, epsilon, C);
+	svm.fit(x, y, alpha, C);
 	cudaFree(d_result);
 	cudaFree(d_result2);
 	cudaFree(d_svm);

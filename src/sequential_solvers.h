@@ -16,57 +16,82 @@ unsigned int smo(SVMT& svm, const vector<double>& x, const vector<int>& y, doubl
 	size_t n = y.size();
 	size_t d = svm.getD();
 	vector<double> alpha(n, 0.0);
-	vector<double> g(n, 1.0);
+	vector<double> g(n, -1.0); // gradient
+	vector<double> k_cache(n); // cache for the diagonal of the kernel matrix
+	for (int i = 0; i < n; ++i)
+		k_cache[i] = svm.kernel(&x[i*d], &x[i*d]);
+	vector<double> ki_cache(n); // cache for the ith row of the kernel matrix
 
 	unsigned int iterations = 0;
 	while(true) {
 		++iterations;
-		int i = 0, j = 0;
-		double i_max = -numeric_limits<double>::infinity();
-		double j_min = numeric_limits<double>::infinity();
 
-		for (int k = n-1; k >= 0; k--) {
-			double A = (C * y[k] - C)/2.0;
-			double B = (C * y[k] + C)/2.0;
-			if (y[k] * alpha[k] < B and i_max < y[k] * g[k]) {
-				i = k;
-				i_max = y[k] * g[k];
-			}
-			if (A < y[k] * alpha[k] and y[k] * g[k] < j_min) {
-				j = k;
-				j_min = y[k] * g[k];
+		int i = -1;
+		double g_max = -numeric_limits<double>::infinity();
+		double g_min = numeric_limits<double>::infinity();
+		for (int k = 0; k < n; ++k) {
+			if (y[k] == 1 and alpha[k] < C or y[k] == -1 and alpha[k] > 0) {
+				if (-y[k] * g[k] >= g_max) {
+					i = k;
+					g_max = -y[k] * g[k];
+				}
 			}
 		}
-		//std::cout << "i: " << i << " i_max: " << i_max << " j: " << j << " j_min: " << j_min << endl;
+		for (int k = 0; k < n; ++k)
+			ki_cache[k] = svm.kernel(&x[i*d], &x[k*d]);
 
-		if (i_max - j_min < epsilon) break;
-
-		double Kii = svm.kernel(&x[i*d], &x[i*d]),
-		Kij = svm.kernel(&x[i*d], &x[j*d]),
-		Kjj = svm.kernel(&x[j*d], &x[j*d]);
-
-		double Aj = (C * y[j] - C)/2.0;
-		double Bi = (C * y[i] + C)/2.0;
-		double lambda = min(Bi - y[i] * alpha[i], y[j] * alpha[j] - Aj);
-		lambda = min(lambda, (i_max-j_min)/(Kii+Kjj-2*Kij));
-
-		for(int k = 0; k < n; k++) {
-			double Kik = svm.kernel(&x[i*d], &x[k*d]),
-			Kjk = svm.kernel(&x[j*d], &x[k*d]);
-			g[k] += lambda * y[k] * (Kjk - Kik);
+		int j = -1;
+		double obj_min = numeric_limits<double>::infinity();
+		for (int k = 0; k < n; ++k) {
+			if ((y[k] == 1 and alpha[k] > 0 or y[k] == -1 and alpha[k] < C)) {
+				double b = g_max + y[k] * g[k];
+				if (-y[k] * g[k] <= g_min) {
+					g_min = -y[k]*g[k];
+				}
+				if (b > 0.) {
+					double lambda = k_cache[i] + k_cache[k] - 2 * ki_cache[k];
+					lambda = max(lambda, 1e-12);
+					if (-(b*b)/lambda <= obj_min) {
+						j = k;
+						obj_min = -(b*b)/lambda;
+					}
+				}
+			}
 		}
-		alpha[i] += y[i] * lambda;
-		if (alpha[i] < epsilon)
-			alpha[i] = 0;
-		else if (alpha[i] > C-epsilon)
-			alpha[i] = C;
-		alpha[j] -= y[j] * lambda;
-		if (alpha[j] < epsilon)
-			alpha[j] = 0;
-		else if (alpha[j] > C-epsilon)
-			alpha[j] = C;
+
+		if (g_max - g_min < epsilon or i==-1 or j==-1)
+			break;
+
+		const double Kii = k_cache[i];
+		const double Kjj = k_cache[j];
+		const double Kij = ki_cache[j];
+
+		double lambda = max(Kii + Kjj - 2 * Kij, 1e-12);
+		double step = (-y[i] * g[i] + y[j] * g[j])/lambda;
+
+		const double old_ai = alpha[i];
+		const double old_aj = alpha[j];
+
+		alpha[i] += y[i] * step;
+		alpha[j] -= y[j] * step;
+
+		double sum = y[i] * old_ai + y[j] * old_aj;
+		if (alpha[i] < 0.) alpha[i] = 0.;
+		if (alpha[i] > C)  alpha[i] = C;
+		alpha[j] = y[j] * (sum - y[i] * alpha[i]);
+		if (alpha[j] < 0.) alpha[j] = 0.;
+		if (alpha[j] > C)  alpha[j] = C;
+		alpha[i] = y[i] * (sum - y[j] * alpha[j]);
+
+		const double delta_ai = alpha[i] - old_ai;
+		const double delta_aj = alpha[j] - old_aj;
+		for (int k = 0; k < n; ++k) {
+			const double Kik = ki_cache[k];
+			const double Kjk = svm.kernel(&x[j*d], &x[k*d]);
+			g[k] += y[k] * (Kik * delta_ai * y[i] + Kjk * delta_aj * y[j]);
+		}
 	}
-	svm.fit(x, y, alpha, epsilon, C);
+	svm.fit(x, y, alpha, C);
 	return iterations;
 }
 
@@ -146,7 +171,7 @@ unsigned int mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, do
 				violating_samples.push_back(i);
 		}
 	}
-	svm.fit(x, y, alpha, epsilon, C);
+	svm.fit(x, y, alpha, C);
 	return iterations;
 }
 

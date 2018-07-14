@@ -6,16 +6,11 @@
 #include <sstream>
 #include <string>
 #include <algorithm>
+#include <type_traits>
 
 #include "io_formats.h"
 
 using namespace std;
-
-int readBinaryIntBE(istream& x, size_t len) {
-	int v = 0;
-	for (; len > 0; --len) v = v*256 + x.get();
-	return v;
-}
 
 IO_FORMAT format_name_to_io_format(string name) {
 	transform(begin(name), end(name), begin(name), [](auto ch) { return tolower(ch); });
@@ -59,15 +54,51 @@ void read_CSV(vector<T>& x, string path) {
 	}
 }
 
-template <typename OUTTYPE, typename INTYPE>
-OUTTYPE cast_IDX_value(INTYPE input) {
-	if constexpr (is_same<OUTTYPE, string>::value)
-		return to_string(input);
-	else
-		return static_cast<OUTTYPE>(input);
-}
 
-template <typename T>
+// class to read a single value from an idx file and cast it to the container type
+template<typename OUTTYPE>
+class value_IDX {
+public:
+	template<typename INTYPE>
+	OUTTYPE next(istream& ins) {
+		return cast(get<INTYPE>(ins));
+	}
+protected:
+	template<typename INTYPE>
+	OUTTYPE cast(INTYPE in) {
+		return static_cast<OUTTYPE>(in);
+	}
+	template<typename INTYPE>
+	enable_if_t<is_integral<INTYPE>::value, INTYPE> get(istream& ins) {
+		INTYPE v = 0;
+		for (int i = 0; i < sizeof(INTYPE); ++i)
+			v = (v << 8) + ins.get();
+		return v;
+	}
+	// special case if INTYPE is a floating point
+	template<typename INTYPE>
+	enable_if_t<is_floating_point<INTYPE>::value, INTYPE> get(istream& ins) {
+		INTYPE v;
+		ins.read(reinterpret_cast<char*>(&v), sizeof v);
+		return v;
+	}
+};
+// specialization: when converting to string use std::to_string instead of static_cast
+template<>
+class value_IDX<string> : value_IDX<void> {
+public:
+	template<typename INTYPE>
+	string next(istream& ins) {
+		return cast(get<INTYPE>(ins));
+	}
+protected:
+	template<typename INTYPE>
+	string cast(INTYPE in) {
+		return to_string(in);
+	}
+};
+
+template<typename T>
 void read_IDX(vector<T>& x, string path) {
 	fstream dataset(path, ios_base::in | ios_base::binary);
 	for (int i = 0; i < 2; ++i)
@@ -77,30 +108,29 @@ void read_IDX(vector<T>& x, string path) {
 	size_t d = dataset.get();
 	size_t dn = 1;
 	for (int i = 0; i < d; ++i) {
-		size_t s = readBinaryIntBE(dataset, 4);
+		size_t s = value_IDX<int>().template next<int>(dataset);
 		dn *= s;
 	}
 	x.reserve(dn);
+	value_IDX<T> parser;
 	for (size_t i = 0; i < dn; ++i) {
 		switch(type) {
 			case 0x08: // unsigned byte
-				x.push_back(cast_IDX_value<T,char>(readBinaryIntBE(dataset, 1)));
+				x.push_back(parser.template next<unsigned char>(dataset));
 				break;
+			case 0x09:
+				// TODO: handle signed bytes
 			case 0x0B: // short
-				x.push_back(cast_IDX_value<T,short>(readBinaryIntBE(dataset, 2)));
+				x.push_back(parser.template next<short>(dataset));
 				break;
-			case 0x0C:
-				x.push_back(cast_IDX_value<T,int>(readBinaryIntBE(dataset, 4)));
+			case 0x0C: // int
+				x.push_back(parser.template next<int>(dataset));
 				break;
 			case 0x0D: // float
-				float fl;
-				dataset >> fl;
-				x.push_back(cast_IDX_value<T,float>(fl));
+				x.push_back(parser.template next<float>(dataset));
 				break;
 			case 0x0E: // double
-				double db;
-				dataset >> db;
-				x.push_back(cast_IDX_value<T,double>(db));
+				x.push_back(parser.template next<double>(dataset));
 				break;
 			default:
 				throw DatasetError {DatasetError::ErrorCode::INVALID_TYPE, i};

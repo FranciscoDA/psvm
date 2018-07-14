@@ -23,19 +23,35 @@
 
 using namespace std;
 
-template<KERNEL_TYPE KT, SVC_TYPE SVCT>
+template<typename SVCT>
 void do_test_predict(
 	const vector<double>& tx, const vector<int>& ty,
-	const vector<double>& px, const SVC<KT, SVCT>& svc
+	const vector<double>& px, const SVCT& svc
 ) {
 	if (ty.size() > 0) {
-		unsigned int hits = 0;
+		vector<int> confusion_matrix (svc._classes * svc._classes);
 		for (int i = 0; i < ty.size(); ++i) {
-			if (svc.predict(&tx[i * svc.getD()]) == ty[i])
-				++hits;
+			int prediction = svc.predict(&tx[i * svc.getD()]);
+			confusion_matrix[ty[i] * svc._classes + prediction]++;
 		}
-		double accuracy = double(hits)/double(ty.size());
-		cout << "Model accuracy: " << hits << "/" << ty.size() << " = " << accuracy << endl;
+		int tptn = 0;
+		for (int i = 0; i < svc._classes; ++i)
+			tptn += confusion_matrix[i*svc._classes+i];
+		double accuracy = double(tptn)/double(ty.size());
+		cout << "Model accuracy: " << tptn << "/" << ty.size() << " = " << accuracy << endl;
+		cout << "Confusion matrix:" << endl;
+		cout << "*\t";
+		for (int j = 0; j < svc._classes; j++) {
+			cout << j << "\t";
+		}
+		cout << endl;
+		for (int i = 0; i < svc._classes; i++) {
+			cout << i << "\t";
+			for (int j = 0; j < svc._classes; j++) {
+				cout << confusion_matrix[i*svc._classes+j] << "\t";
+			}
+			cout << endl;
+		}
 	}
 	if (px.size() > 0) {
 		cout << "Predictions:" << endl;
@@ -45,65 +61,46 @@ void do_test_predict(
 	}
 }
 
-template<KERNEL_TYPE KT>
+
+template<typename SVCT>
 void do_main(
 	const vector<double>& x, const vector<int>& y,
 	const vector<double>& tx, const vector<int>& ty,
-	const vector<double>& px, const double C, SVC_TYPE svctype,
-	const Kernel<KT>& kernel, const int num_classes
+	const vector<double>& px, const double C, SVCT&& svc
 ) {
-	switch (svctype) {
-		case SVC_TYPE::OAA: {
-			cout << "One-against-all classification" << endl;
-			SVC<KT, SVC_TYPE::OAA> svc(num_classes, x.size() / y.size(), kernel);
-			auto start_t = chrono::system_clock::now();
-			svc.train(x, y, C,
-				[&start_t](int i) {
-					cout << "Training " << i << " vs. all" << endl;
-					start_t = chrono::system_clock::now();
-				},
-				[start_t](unsigned int nsvs, unsigned int iters) {
-					auto end_t = chrono::system_clock::now();
-					chrono::duration<double> elapsed = end_t-start_t;
-					cout << "#SVs: " << nsvs << "(" << iters << " iterations in " << elapsed.count() << "s)" << endl;
-				}
-			);
-			do_test_predict(tx, ty, px, svc);
-			break;
-		}
-		case SVC_TYPE::OAO: {
-			cout << "One-against-one classification" << endl;
-			SVC<KT, SVC_TYPE::OAO> svc(num_classes, x.size() / y.size(), kernel);
-			auto start_t = chrono::system_clock::now();
-			svc.train(x, y, C,
-				[&start_t](int i, int j) {
-					cout << "Training " << i << " vs. " << j << endl;
-					start_t = chrono::system_clock::now();
-				},
-				[start_t](unsigned int nsvs, unsigned int iters) {
-					auto end_t = chrono::system_clock::now();
-					chrono::duration<double> elapsed = end_t-start_t;
-					cout << "#SVs: " << nsvs << "(" << iters << " iterations in " << elapsed.count() << "s)" << endl;
-				}
-			);
-			do_test_predict(tx, ty, px, svc);
-			break;
-		}
-		case SVC_TYPE::TWOCLASS: {
-			cout << "Two class classification" << endl;
-			SVC<KT, SVC_TYPE::TWOCLASS> svc(x.size() / y.size(), kernel);
-			auto start_t = chrono::system_clock::now();
-			svc.train(x, y, C,
-				[](int i, int j) { cout << "Training " << i << " vs. " << j << endl; },
-				[&start_t](unsigned int nsvs, unsigned int iters) {
-					auto end_t = chrono::system_clock::now();
-					chrono::duration<double> elapsed = end_t-start_t;
-					cout << "#SVs: " << nsvs << "(" << iters << " iterations in " << elapsed.count() << "s)" << endl;
-				}
-			);
-			do_test_predict(tx, ty, px, svc);
-			break;
-		}
+	using SVCT2 = typename remove_reference<SVCT>::type;
+	using KT = typename SVCT2::kernel_type;
+	if constexpr (is_same<OneAgainstAllSVC<KT>, SVCT2>::value) {
+		cout << "One-against-all classification" << endl;
+		auto start_t = chrono::system_clock::now();
+		svc.train(x, y, C,
+			[&start_t](int i) {
+				cout << "Training " << i << " vs. all" << endl;
+				start_t = chrono::system_clock::now();
+			},
+			[start_t](unsigned int nsvs, unsigned int iters) {
+				auto end_t = chrono::system_clock::now();
+				chrono::duration<double> elapsed = end_t-start_t;
+				cout << "#SVs: " << nsvs << "(" << iters << " iterations in " << elapsed.count() << "s)" << endl;
+			}
+		);
+		do_test_predict(tx, ty, px, svc);
+	}
+	if constexpr (is_same<OneAgainstOneSVC<KT>, SVCT2>::value) {
+		cout << "One-against-one classification" << endl;
+		auto start_t = chrono::system_clock::now();
+		svc.train(x, y, C,
+			[&start_t](int i, int j, size_t psize) {
+				cout << "Training " << i << " vs. " << j << " (problem size: " << psize << ")" << endl;
+				start_t = chrono::system_clock::now();
+			},
+			[start_t](unsigned int nsvs, double b, unsigned int iters) {
+				auto end_t = chrono::system_clock::now();
+				chrono::duration<double> elapsed = end_t-start_t;
+				cout << "#SVs: " << nsvs << " B: " << b << " (" << iters << " iterations in " << elapsed.count() << "s)" << endl;
+			}
+		);
+		do_test_predict(tx, ty, px, svc);
 	}
 }
 
@@ -140,40 +137,48 @@ int main(int argc, char** argv) {
 
 	const vector<string> KERNEL_OPTIONS {"linear", "poly", "rbf"};
 	const vector<string> NORMALIZATION_OPTIONS {"0-1", "standard", "-1-1"};
+	const string SVC_OPTION_1AA = "1AA";
+	const string SVC_OPTION_1A1 = "1A1";
+	const vector<string> SVC_OPTIONS {SVC_OPTION_1AA, SVC_OPTION_1A1};
 	optparse::OptionParser parser;
 	parser.add_option("--train-attributes").dest("train-attributes").help("Specifies training dataset with attributes (required)");
 	parser.add_option("--train-labels").dest("train-labels").help("Specifies training dataset with labels (required)");
 	parser.add_option("--train-format").dest("train-format")
 		.type("choice").choices(begin(IO_FORMAT_NAMES), end(IO_FORMAT_NAMES))
 		.help("Specifies training dataset format (csv|idx)");
-	parser.add_option("--train-n").dest("train-n").type("int").help("Specifies amount of training samples to use (optional)");
-
-	parser.add_option("--test-attributes").dest("test-attributes").help("Specifies testing dataset attributes (optional)");
-	parser.add_option("--test-labels").dest("test-labels").help("Specifies testing dataset labels (required if testing)");
+	parser.add_option("--train-n").dest("train-n").type("int")
+		.help("Specifies amount of training samples to use (optional)");
+	parser.add_option("--test-attributes").dest("test-attributes")
+		.help("Specifies testing dataset attributes (optional)");
+	parser.add_option("--test-labels").dest("test-labels")
+		.help("Specifies testing dataset labels (required if testing)");
 	parser.add_option("--test-format").dest("test-format")
 		.type("choice").choices(begin(IO_FORMAT_NAMES), end(IO_FORMAT_NAMES))
 		.help("Specifies testing dataset format (csv|idx) (required if testing)");
-	parser.add_option("--test-n").dest("test-n").type("int").help("Specifies amount of testing samples to use (optional)");
-
+	parser.add_option("--test-n").dest("test-n").type("int")
+		.help("Specifies amount of testing samples to use (optional)");
 	parser.add_option("--normalization").dest("normalization")
 		.type("choice").choices(begin(NORMALIZATION_OPTIONS), end(NORMALIZATION_OPTIONS))
 		.help("Specifies attribute normalization method (0-1|standard|-1-1)");
-	parser.add_option("--cost").dest("cost").type("double").help("Specifies the cost factor C");
+	parser.add_option("--cost").dest("cost").type("double")
+		.help("Specifies the cost factor C");
 	parser.add_option("--kernel").dest("kernel")
 		.type("choice").choices(begin(KERNEL_OPTIONS), end(KERNEL_OPTIONS))
 		.help("Specifies the svm kernel to use (linear|poly|rbf)");
-	parser.add_option("--gamma").dest("kernel-gamma").type("double").help("Specifies the gamma factor for RBF kernel (gamma>0)");
-	parser.add_option("--degree").dest("kernel-d").type("double").help("Specifies the degree for polynomial kernel");
-	parser.add_option("--constant").dest("kernel-c").type("double").help("Specifies the c constant for polynomial kernel (set c=0 to use homogeneous)");
-
-	parser.add_option("--predict-attributes").dest("predict-attributes").help("Specifies predict dataset with attributes (optional)");
+	parser.add_option("--gamma").dest("kernel-gamma").type("double")
+		.help("Specifies the gamma factor for RBF kernel (gamma>0)");
+	parser.add_option("--degree").dest("kernel-d").type("double")
+		.help("Specifies the degree for polynomial kernel");
+	parser.add_option("--constant").dest("kernel-c").type("double")
+		.help("Specifies the c constant for polynomial kernel (set c=0 to use homogeneous)");
+	parser.add_option("--predict-attributes").dest("predict-attributes")
+		.help("Specifies predict dataset with attributes (optional)");
 	parser.add_option("--predict-format").dest("predict-format")
 		.type("choices").choices(begin(IO_FORMAT_NAMES), end(IO_FORMAT_NAMES))
 		.help("Specifies predict dataset format (csv|idx)");
-
-	parser.add_option("--1AA").action("store_true").help("Train and classify using one-against-all algorithm");
-	parser.add_option("--1A1").action("store_true").help("Train and classify using one-against-one algorithm");
-	parser.add_option("--TWOCLASS").action("store_true").help("Train and classify using two-class algorithm");
+	parser.add_option("--SVC").dest("svc")
+		.type("choice").choices(begin(SVC_OPTIONS), end(SVC_OPTIONS))
+		.help("Select multiclass classification method (1AA|1A1)");
 	const optparse::Values options = parser.parse_args(argc, argv);
 
 	double C = 1.0;
@@ -225,6 +230,7 @@ int main(int argc, char** argv) {
 		cerr << " at line " << e.position << endl;
 		return 1;
 	}
+	const int num_attributes = x.size() / y.size();
 	if (options.is_set("train-n")) {
 		int train_size = int(options.get("train-n"));
 		x.resize(train_size*(x.size() / y.size()));
@@ -237,8 +243,10 @@ int main(int argc, char** argv) {
 	}
 
 	std::set<int> y_set(begin(y), end(y));
-	int num_classes = y_set.size();
-	cout << x.size() << " datapoints divided between " << y.size() << " instances and " << num_classes << " classes" << endl;
+	const int num_classes = y_set.size();
+	cout << x.size() << " training datapoints divided between " << y.size() << " instances and " << num_classes << " classes" << endl;
+	cout << test_x.size() << " testing datapoints" << endl;
+
 	for (int i = 0; i < num_classes; i++) {
 		if (y_set.find(i) == end(y_set)) {
 			cerr << "ERROR: classes are not contiguous" << endl;
@@ -284,30 +292,40 @@ int main(int argc, char** argv) {
 			normalization_standard(test_x, attribute_mean, attribute_stdev);
 			normalization_standard(predict_x, attribute_mean, attribute_stdev);
 		}
+		else {
+			cerr << "Unknown normalization option " << options["normalization"] << endl;
+			return 1;
+		}
 	}
 
-	SVC_TYPE svctype;
-	if (options.is_set("1A1")) {
-		svctype = SVC_TYPE::OAO;
-	}
-	else if (options.is_set("1AA")) {
-		svctype = SVC_TYPE::OAA;
-	}
-	else if (options.is_set("TWOCLASS")) {
-		svctype = SVC_TYPE::TWOCLASS;
-	}
-
+	string svc_selection = options.is_set("svc") ? options["svc"] : SVC_OPTION_1A1;
 	if (options.is_set("kernel")) {
 		if (options["kernel"] == "linear") {
 			cout << "Using linear kernel" << endl;
-			do_main<KERNEL_TYPE::LINEAR>(x, y, test_x, test_y, predict_x, C, svctype, Kernel<KERNEL_TYPE::LINEAR>(), num_classes);
+			auto k = LinearKernel();
+			if (svc_selection == SVC_OPTION_1AA) {
+				auto svc = OneAgainstAllSVC<LinearKernel>(num_classes, num_attributes, k);
+				do_main(x, y, test_x, test_y, predict_x, C, OneAgainstAllSVC<LinearKernel>(num_classes, num_attributes, k));
+			}
+			else if (svc_selection == SVC_OPTION_1A1) {
+				auto svc = OneAgainstOneSVC<LinearKernel>(num_classes, num_attributes, k);
+				do_main(x, y, test_x, test_y, predict_x, C, svc);
+			}
 		}
 		else if (options["kernel"] == "rbf") {
 			double gamma = 0.05;
 			if (options.is_set("kernel-gamma"))
 				gamma = double(options.get("kernel-gamma"));
 			cout << "Using RBF kernel with gamma=" << gamma << endl;
-			do_main<KERNEL_TYPE::RBF>(x, y, test_x, test_y, predict_x, C, svctype, Kernel<KERNEL_TYPE::RBF>(gamma), num_classes);
+			auto k = RbfKernel(gamma);
+			if (svc_selection == SVC_OPTION_1AA) {
+				auto svc = OneAgainstAllSVC<RbfKernel>(num_classes, num_attributes, k);
+				do_main(x, y, test_x, test_y, predict_x, C, svc);
+			}
+			else if (svc_selection == SVC_OPTION_1A1) {
+				auto svc = OneAgainstOneSVC<RbfKernel>(num_classes, num_attributes, k);
+				do_main(x, y, test_x, test_y, predict_x, C, svc);
+			}
 		}
 		else if (options["kernel"] == "poly") {
 			double d = 2.0;
@@ -317,7 +335,15 @@ int main(int argc, char** argv) {
 			if (options.is_set("kernel-c"))
 				c = double(options.get("kernel-c"));
 			cout << "Using Poly kernel with d=" << d << ", c=" << c << endl;
-			do_main<KERNEL_TYPE::POLYNOMIAL>(x, y, test_x, test_y, predict_x, C, svctype, Kernel<KERNEL_TYPE::POLYNOMIAL>(d, c), num_classes);
+			auto k = PolynomialKernel(d,C);
+			if (svc_selection == SVC_OPTION_1AA) {
+				auto svc = OneAgainstAllSVC<PolynomialKernel>(num_classes, num_attributes, k);
+				do_main(x, y, test_x, test_y, predict_x, C, svc);
+			}
+			else if (svc_selection == SVC_OPTION_1A1) {
+				auto svc = OneAgainstOneSVC<PolynomialKernel>(num_classes, num_attributes, k);
+				do_main(x, y, test_x, test_y, predict_x, C, svc);
+			}
 		}
 	}
 }
