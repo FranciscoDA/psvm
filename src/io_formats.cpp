@@ -48,8 +48,10 @@ void read_CSV(vector<T>& x, string path) {
 		x.push_back(val);
 		n++;
 		if (this_d != d) {
-			if (n == 1) d = this_d;
-			else throw DatasetError {DatasetError::ErrorCode::INCONSISTENT_D, n};
+			if (n == 1)
+				d = this_d;
+			else
+				throw DatasetError {DatasetError::ErrorCode::INCONSISTENT_ROWS, n, path};
 		}
 	}
 }
@@ -103,7 +105,7 @@ void read_IDX(vector<T>& x, string path) {
 	fstream dataset(path, ios_base::in | ios_base::binary);
 	for (int i = 0; i < 2; ++i)
 		if (dataset.get() != 0)
-			throw DatasetError {DatasetError::ErrorCode::HEADER_MISMATCH, 0};
+			throw DatasetError {DatasetError::ErrorCode::HEADER_MISMATCH, 0, path};
 	int type = dataset.get();
 	size_t d = dataset.get();
 	size_t dn = 1;
@@ -133,7 +135,7 @@ void read_IDX(vector<T>& x, string path) {
 				x.push_back(parser.template next<double>(dataset));
 				break;
 			default:
-				throw DatasetError {DatasetError::ErrorCode::INVALID_TYPE, i};
+				throw DatasetError {DatasetError::ErrorCode::INVALID_TYPE, i, path};
 		}
 	}
 }
@@ -146,7 +148,20 @@ void read_dataset(vector<T>& x, const string& path, IO_FORMAT fmt) {
 	else if (fmt == IO_FORMAT::IDX) {
 		read_IDX(x, path);
 	}
+	else {
+		throw DatasetError {DatasetError::UNKNOWN_FORMAT, 0, ""};
+	}
 }
-template void read_dataset(vector<double>& x, const string& path, IO_FORMAT fmt);
-template void read_dataset(vector<string>& x, const string& path, IO_FORMAT fmt);
-template void read_dataset(vector<int>& x, const string& path, IO_FORMAT fmt);
+template<typename T>
+void read_dataset(vector<T>& x, const string& path) {
+	// deduce format from file extension
+	IO_FORMAT fmt = IO_FORMAT::NONE;
+	size_t ext_pos = path.rfind(".");
+	if (ext_pos != string::npos) {
+		fmt = format_name_to_io_format(path.substr(ext_pos+1));
+	}
+	read_dataset(x, path, fmt);
+}
+template void read_dataset(vector<double>& x, const string& path);
+template void read_dataset(vector<string>& x, const string& path);
+template void read_dataset(vector<int>& x, const string& path);

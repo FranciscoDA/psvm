@@ -7,14 +7,15 @@
 
 struct DatasetError {
 	enum ErrorCode {
-		INCONSISTENT_D,
-		INVALID_Y,
+		INCONSISTENT_ROWS,
 		HEADER_MISMATCH,
 		INVALID_TYPE,
+		UNKNOWN_FORMAT
 	};
 
-	ErrorCode code;
-	size_t position;
+	const ErrorCode code;
+	const size_t position=0;
+	const std::string filename="";
 };
 
 enum class IO_FORMAT {
@@ -29,5 +30,7 @@ const std::string& io_format_to_format_name(IO_FORMAT fmt);
 
 template<typename T>
 void read_dataset(std::vector<T>& x, const std::string& path, IO_FORMAT fmt);
+template<typename T>
+void read_dataset(std::vector<T>& x, const std::string& path);
 
 #endif
