@@ -1,12 +1,4 @@
 
-#include "svm.h"
-
-#ifdef __CUDACC__
-#include "cuda_solvers.cu"
-#else
-#include "sequential_solvers.h"
-#endif
-
 #include <chrono>
 #include <vector>
 #include <string>
@@ -18,7 +10,17 @@
 
 #include "classifier.h"
 #include "io_formats.h"
+#include "strided_iterator.h"
+#include "ref_range.h"
 #include "utils.h"
+
+#include "svm.h"
+
+#ifdef __CUDACC__
+#include "cuda_solvers.cu"
+#else
+#include "sequential_solvers.h"
+#endif
 
 using namespace std;
 
@@ -307,27 +309,21 @@ int main(int argc, char** argv) {
 		}
 		if (scale_min != scale_max) {
 			for (int i = 0; i < num_attributes; ++i) {
-				auto x_sb = strided_begin(x, i, num_attributes);
-				auto x_se = strided_end(x, i, num_attributes);
-				auto x_min = *min_element(x_sb, x_se);
-				auto x_max = *max_element(x_sb, x_se);
-				auto f = [=](auto& x) { x = normalization_scale(x, scale_min, scale_max, x_min, x_max); };
-				for_each(x_sb, x_se, f);
-				for_each(strided_begin(test_x, i, num_attributes), strided_end(test_x, i, num_attributes), f);
-				for_each(strided_begin(predict_x, i, num_attributes), strided_end(predict_x, i, num_attributes), f);
+				auto x_min = *min_element(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes));
+				auto x_max = *max_element(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes));
+				for (auto& dataset : make_ref_range(x, test_x, predict_x))
+					for (double& x : strided(dataset, i, num_attributes))
+						x = normalization_scale(x, scale_min, scale_max, x_min, x_max);
 			}
 		}
 		else if (options["normalization"] == NORMALIZATION_OPTION_STANDARD) {
 			cout << "Normalizing attributes to (0;1) distribution" << endl;
 			for (int i = 0; i < num_attributes; ++i) {
-				auto x_sb = strided_begin(x, i, num_attributes);
-				auto x_se = strided_end(x, i, num_attributes);
-				auto x_mean = mean(x_sb, x_se);
-				auto x_stdev = stdev(x_sb, x_se, x_mean);
-				auto f = [=](auto& x) { x = normalization_standard(x, x_mean, x_stdev); };
-				for_each(x_sb, x_se, f);
-				for_each(strided_begin(test_x, i, num_attributes), strided_end(test_x, i, num_attributes), f);
-				for_each(strided_begin(predict_x, i, num_attributes), strided_end(predict_x, i, num_attributes), f);
+				auto x_mean = mean(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes));
+				auto x_stdev = stdev(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes), x_mean);
+				for (auto& dataset : make_ref_range(x, test_x, predict_x))
+					for (double& x : strided(dataset, i, num_attributes))
+						x = normalization_standard(x, x_mean, x_stdev);
 			}
 		}
 		else {

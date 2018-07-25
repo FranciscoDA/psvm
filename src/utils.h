@@ -3,6 +3,7 @@
 #define _UTILS_H_
 
 #include <string>
+#include <numeric>
 
 template<typename InputIterator>
 string join_str(const string& sep, InputIterator first, InputIterator last) {
@@ -14,79 +15,6 @@ string join_str(const string& sep, InputIterator first, InputIterator last) {
 template<typename Iterable>
 string join_str(const string& sep, const Iterable& iterable) {
 	return join_str(sep, begin(iterable), end(iterable));
-}
-
-template<typename Iterator>
-class stride_iterator {
-public:
-	using iterator_category = std::random_access_iterator_tag;
-	using value_type = typename Iterator::value_type;
-	using difference_type = typename Iterator::difference_type;
-	using pointer = typename Iterator::pointer;
-	using reference = typename Iterator::reference;
-
-	explicit stride_iterator(Iterator _it, std::size_t _stride) : it(_it), stride(_stride) {
-	}
-	stride_iterator& operator++() {
-		it += stride;
-		return *this;
-	}
-	stride_iterator operator++(int) {
-		auto retval = *this;
-		it += stride;
-		return retval;
-	}
-	stride_iterator operator+(long j) const {
-		auto retval = *this;
-		retval.it += j * retval.stride;
-		return retval;
-	}
-	stride_iterator operator-(long j) const {
-		auto retval = *this;
-		retval.it -= j * retval.stride;
-		return retval;
-	}
-	difference_type operator-(const stride_iterator& other) const {
-		return (it - other.it)/stride;
-	}
-	bool operator==(const stride_iterator& other) const {
-		return it - other.it == 0;
-	}
-	bool operator!=(const stride_iterator& other) const {
-		return it - other.it != 0;
-	}
-	bool operator<(const stride_iterator& other) const {
-		return it - other.it < 0;
-	}
-	bool operator<=(const stride_iterator& other) const {
-		return it - other.it <= 0;
-	}
-	typename Iterator::reference operator*() const {
-		return *it;
-	}
-private:
-	Iterator it;
-	std::size_t stride;
-};
-
-template<typename Iterable>
-stride_iterator<typename Iterable::iterator> strided_begin(Iterable& x, std::size_t offset, std::size_t stride) {
-	return stride_iterator<typename Iterable::iterator>(x.begin() + offset, stride);
-}
-template<typename Iterable>
-stride_iterator<typename Iterable::iterator> strided_end(Iterable& x, std::size_t offset, std::size_t stride) {
-	auto end_offset = ((x.size()+stride-1)/stride * stride + offset) % stride;
-	return stride_iterator<typename Iterable::iterator>(x.end() + end_offset, stride);
-}
-
-template<typename Iterable>
-stride_iterator<typename Iterable::const_iterator> strided_cbegin(const Iterable& x, std::size_t offset, std::size_t stride) {
-	return stride_iterator<typename Iterable::const_iterator>(x.cbegin() + offset, stride);
-}
-template<typename Iterable>
-stride_iterator<typename Iterable::const_iterator> strided_cend(const Iterable& x, std::size_t offset, std::size_t stride) {
-	auto end_offset = ((x.size()+stride-1)/stride * stride + offset) % stride;
-	return stride_iterator<typename Iterable::const_iterator>(x.cend() + end_offset, stride);
 }
 
 template<typename InputIterator>
