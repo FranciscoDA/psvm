@@ -10,8 +10,8 @@
 
 #include "classifier.h"
 #include "io_formats.h"
-#include "strided_iterator.h"
-#include "ref_range.h"
+#include "iterutils/strided_range.h"
+#include "iterutils/ref_range.h"
 #include "utils.h"
 
 #include "svm.h"
@@ -204,6 +204,14 @@ int main(int argc, char** argv) {
 
 	vector<double> predict_x;
 
+	if (!options.is_set("train-attributes")) {
+		cerr << "DATASET ERROR: No training attributes supplied" << endl;
+		return 1;
+	}
+	if (!options.is_set("train-labels")) {
+		cerr << "DATASET ERROR: No training labels supplied" << endl;
+		return 1;
+	}
 	cout << "Reading dataset..." << endl;
 	try {
 		if (options.is_set("train-attributes") and options.is_set("train-labels")) {
@@ -311,8 +319,8 @@ int main(int argc, char** argv) {
 			for (int i = 0; i < num_attributes; ++i) {
 				auto x_min = *min_element(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes));
 				auto x_max = *max_element(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes));
-				for (auto& dataset : make_ref_range(x, test_x, predict_x))
-					for (double& x : strided(dataset, i, num_attributes))
+				for (auto& dataset : ref_range(x, test_x, predict_x))
+					for (double& x : strided_range(dataset, i, num_attributes))
 						x = normalization_scale(x, scale_min, scale_max, x_min, x_max);
 			}
 		}
@@ -321,8 +329,8 @@ int main(int argc, char** argv) {
 			for (int i = 0; i < num_attributes; ++i) {
 				auto x_mean = mean(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes));
 				auto x_stdev = stdev(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes), x_mean);
-				for (auto& dataset : make_ref_range(x, test_x, predict_x))
-					for (double& x : strided(dataset, i, num_attributes))
+				for (auto& dataset : ref_range(x, test_x, predict_x))
+					for (double& x : strided_range(dataset, i, num_attributes))
 						x = normalization_standard(x, x_mean, x_stdev);
 			}
 		}
