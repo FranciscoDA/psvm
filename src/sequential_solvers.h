@@ -30,7 +30,7 @@ unsigned int smo(SVMT& svm, const vector<double>& x, const vector<int>& y, doubl
 		double g_max = -numeric_limits<double>::infinity();
 		double g_min = numeric_limits<double>::infinity();
 		for (int k = 0; k < n; ++k) {
-			if (y[k] == 1 and alpha[k] < C or y[k] == -1 and alpha[k] > 0) {
+			if ((y[k] == 1 and alpha[k] < C) or (y[k] == -1 and alpha[k] > 0)) {
 				if (-y[k] * g[k] >= g_max) {
 					i = k;
 					g_max = -y[k] * g[k];
@@ -43,7 +43,7 @@ unsigned int smo(SVMT& svm, const vector<double>& x, const vector<int>& y, doubl
 		int j = -1;
 		double obj_min = numeric_limits<double>::infinity();
 		for (int k = 0; k < n; ++k) {
-			if ((y[k] == 1 and alpha[k] > 0 or y[k] == -1 and alpha[k] < C)) {
+			if ((y[k] == 1 and alpha[k] > 0) or (y[k] == -1 and alpha[k] < C)) {
 				double b = g_max + y[k] * g[k];
 				if (-y[k] * g[k] <= g_min) {
 					g_min = -y[k]*g[k];

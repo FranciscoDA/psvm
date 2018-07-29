@@ -14,7 +14,7 @@ class OneAgainstAllSVC {
 public:
 	using kernel_type = KT;
 
-	OneAgainstAllSVC(int classes, int d, const KT& kernel) : _classes(classes), _d(d), _kernel(kernel) {
+	OneAgainstAllSVC(int classes, int d, const KT& kernel) : _classes(classes), _kernel(kernel), _d(d) {
 	}
 
 	template <typename F, typename G>
@@ -53,7 +53,7 @@ class OneAgainstOneSVC {
 public:
 	using kernel_type = KT;
 
-	OneAgainstOneSVC(int classes, int d, const KT& kernel) : _classes(classes), _d(d), _kernel(kernel) {
+	OneAgainstOneSVC(int classes, int d, const KT& kernel) : _classes(classes), _kernel(kernel), _d(d) {
 	}
 
 	template<typename F, typename G>

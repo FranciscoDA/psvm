@@ -55,7 +55,7 @@ private:
 template<typename KT>
 class SVM {
 public:
-	SVM(size_t d, const KT& k) : _d(d), _kernel(k), _b(0.0) {
+	SVM(size_t d, const KT& k) : _d(d), _b(0.0), _kernel(k) {
 	}
 
 	size_t getD() const {
