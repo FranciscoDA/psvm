@@ -19,21 +19,40 @@ string join_str(const string& sep, const Iterable& iterable) {
 
 template<typename InputIterator>
 typename InputIterator::value_type mean(InputIterator first, InputIterator last) {
-	auto d = std::distance(first, last);
-	if (d != 0)
-		return std::accumulate(first, last, 0.) / static_cast<typename InputIterator::value_type>(d);
-	return 0.;
+	std::size_t count = 0;
+	auto sum_value = *first;
+	while (++first != last) {
+		sum_value += *first;
+		++count;
+	}
+	return sum_value/count;
+}
+template<typename Iterable>
+typename Iterable::value_type mean(Iterable& it) {
+	return mean(begin(it), end(it));
+}
+template<typename Iterable>
+typename Iterable::value_type mean(Iterable&& it) {
+	return mean(begin(it), end(it));
 }
 
 template<typename InputIterator>
 typename InputIterator::value_type stdev(InputIterator first, InputIterator last, typename InputIterator::value_type m) {
-	auto d = std::distance(first, last);
-	if (d == 0)
-		return 0.;
-	typename InputIterator::value_type esumsq = 0.;
-	for (; first != last; ++first)
-		esumsq += (*first-m) * (*first-m) / static_cast<typename InputIterator::value_type>(d);
-	return std::sqrt(esumsq);
+	std::size_t count = 0;
+	auto sumsq = (*first-m) * (*first-m);
+	while (++first != last) {
+		sumsq += (*first-m) * (*first-m);
+		++count;
+	}
+	return std::sqrt(sumsq/count);
+}
+template<typename Iterable>
+typename Iterable::value_type stdev(Iterable& it, typename Iterable::value_type m) {
+	return stdev(begin(it), end(it), m);
+}
+template<typename Iterable>
+typename Iterable::value_type stdev(Iterable&& it, typename Iterable::value_type m) {
+	return stdev(begin(it), end(it), m);
 }
 
 template<typename T>

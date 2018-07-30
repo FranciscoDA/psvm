@@ -22,8 +22,6 @@
 #include "sequential_solvers.h"
 #endif
 
-#include <CL/sycl.hpp>
-
 using namespace std;
 
 template<typename SVCT>
@@ -329,8 +327,8 @@ int main(int argc, char** argv) {
 		else if (options["normalization"] == NORMALIZATION_OPTION_STANDARD) {
 			cout << "Normalizing attributes to (0;1) distribution" << endl;
 			for (int i = 0; i < num_attributes; ++i) {
-				auto x_mean = mean(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes));
-				auto x_stdev = stdev(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes), x_mean);
+				auto x_mean = mean(strided_range(x,i,num_attributes));
+				auto x_stdev = stdev(strided_range(x, i, num_attributes), x_mean);
 				for (auto& dataset : ref_range(x, test_x, predict_x))
 					for (double& x : strided_range(dataset, i, num_attributes))
 						x = normalization_standard(x, x_mean, x_stdev);
