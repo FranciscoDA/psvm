@@ -22,6 +22,8 @@
 #include "sequential_solvers.h"
 #endif
 
+#include <CL/sycl.hpp>
+
 using namespace std;
 
 template<typename SVCT>
@@ -341,45 +343,44 @@ int main(int argc, char** argv) {
 	}
 
 	string svc_selection = options.is_set("svc") ? options["svc"] : SVC_OPTION_1A1;
-	if (options.is_set("kernel")) {
-		if (options["kernel"] == KERNEL_OPTION_LINEAR) {
-			cout << "Using linear kernel" << endl;
-			auto k = LinearKernel();
-			if (svc_selection == SVC_OPTION_1AA) {
-				do_main(x, y, test_x, test_y, predict_x, C, OneAgainstAllSVC<LinearKernel>(num_classes, num_attributes, k));
-			}
-			else if (svc_selection == SVC_OPTION_1A1) {
-				do_main(x, y, test_x, test_y, predict_x, C, OneAgainstOneSVC<LinearKernel>(num_classes, num_attributes, k));
-			}
+	string kernel_selection = options.is_set("kernel") ? options["kernel"] : KERNEL_OPTION_LINEAR;
+	if (kernel_selection == KERNEL_OPTION_LINEAR) {
+		cout << "Using linear kernel" << endl;
+		auto k = LinearKernel();
+		if (svc_selection == SVC_OPTION_1AA) {
+			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstAllSVC<LinearKernel>(num_classes, num_attributes, k));
 		}
-		else if (options["kernel"] == KERNEL_OPTION_RBF) {
-			double gamma = 0.05;
-			if (options.is_set("kernel-gamma"))
-				gamma = double(options.get("kernel-gamma"));
-			cout << "Using RBF kernel with gamma=" << gamma << endl;
-			auto k = RbfKernel(gamma);
-			if (svc_selection == SVC_OPTION_1AA) {
-				do_main(x, y, test_x, test_y, predict_x, C, OneAgainstAllSVC<RbfKernel>(num_classes, num_attributes, k));
-			}
-			else if (svc_selection == SVC_OPTION_1A1) {
-				do_main(x, y, test_x, test_y, predict_x, C, OneAgainstOneSVC<RbfKernel>(num_classes, num_attributes, k));
-			}
+		else if (svc_selection == SVC_OPTION_1A1) {
+			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstOneSVC<LinearKernel>(num_classes, num_attributes, k));
 		}
-		else if (options["kernel"] == KERNEL_OPTION_POLYNOMIAL) {
-			double d = 2.0;
-			double c = 0.0;
-			if (options.is_set("kernel-d"))
-				d = double(options.get("kernel-d"));
-			if (options.is_set("kernel-c"))
-				c = double(options.get("kernel-c"));
-			cout << "Using Poly kernel with d=" << d << ", c=" << c << endl;
-			auto k = PolynomialKernel(d,C);
-			if (svc_selection == SVC_OPTION_1AA) {
-				do_main(x, y, test_x, test_y, predict_x, C, OneAgainstAllSVC<PolynomialKernel>(num_classes, num_attributes, k));
-			}
-			else if (svc_selection == SVC_OPTION_1A1) {
-				do_main(x, y, test_x, test_y, predict_x, C, OneAgainstOneSVC<PolynomialKernel>(num_classes, num_attributes, k));
-			}
+	}
+	else if (kernel_selection == KERNEL_OPTION_RBF) {
+		double gamma = 0.05;
+		if (options.is_set("kernel-gamma"))
+			gamma = double(options.get("kernel-gamma"));
+		cout << "Using RBF kernel with gamma=" << gamma << endl;
+		auto k = RbfKernel(gamma);
+		if (svc_selection == SVC_OPTION_1AA) {
+			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstAllSVC<RbfKernel>(num_classes, num_attributes, k));
+		}
+		else if (svc_selection == SVC_OPTION_1A1) {
+			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstOneSVC<RbfKernel>(num_classes, num_attributes, k));
+		}
+	}
+	else if (kernel_selection == KERNEL_OPTION_POLYNOMIAL) {
+		double d = 2.0;
+		double c = 0.0;
+		if (options.is_set("kernel-d"))
+			d = double(options.get("kernel-d"));
+		if (options.is_set("kernel-c"))
+			c = double(options.get("kernel-c"));
+		cout << "Using Poly kernel with d=" << d << ", c=" << c << endl;
+		auto k = PolynomialKernel(d,C);
+		if (svc_selection == SVC_OPTION_1AA) {
+			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstAllSVC<PolynomialKernel>(num_classes, num_attributes, k));
+		}
+		else if (svc_selection == SVC_OPTION_1A1) {
+			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstOneSVC<PolynomialKernel>(num_classes, num_attributes, k));
 		}
 	}
 }
