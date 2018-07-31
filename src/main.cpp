@@ -24,6 +24,15 @@
 
 using namespace std;
 
+const string KERNEL_OPTION_LINEAR = "linear";
+const string KERNEL_OPTION_POLYNOMIAL = "poly";
+const string KERNEL_OPTION_RBF = "rbf";
+const string NORMALIZATION_OPTION_ZO = "0-1";
+const string NORMALIZATION_OPTION_MOO = "-1-1";
+const string NORMALIZATION_OPTION_STANDARD = "standard";
+const string SVC_OPTION_1AA = "1AA";
+const string SVC_OPTION_1A1 = "1A1";
+
 template<typename SVCT>
 void do_test_predict(
 	const vector<double>& tx, const vector<int>& ty,
@@ -62,16 +71,17 @@ void do_test_predict(
 	}
 }
 
-template<typename SVCT>
-void do_main(
+template<typename KT>
+void do_build_svc(
 	const vector<double>& x, const vector<int>& y,
 	const vector<double>& tx, const vector<int>& ty,
-	const vector<double>& px, const double C, SVCT&& svc
+	const vector<double>& px, const double C, KT&& kernel, int num_attributes, int num_classes,
+	const optparse::Values& options
 ) {
-	using SVCT2 = typename remove_reference<SVCT>::type;
-	using KT = typename SVCT2::kernel_type;
-	if constexpr (is_same<OneAgainstAllSVC<KT>, SVCT2>::value) {
+	const string svc_selection = options.is_set("svc") ? options["svc"] : SVC_OPTION_1A1;
+	if (svc_selection == SVC_OPTION_1AA) {
 		cout << "One-against-all classification" << endl;
+		OneAgainstAllSVC<KT> svc (num_classes, num_attributes, kernel);
 		auto start_t = chrono::system_clock::now();
 		svc.train(x, y, C,
 			[&start_t](int i) {
@@ -86,8 +96,9 @@ void do_main(
 		);
 		do_test_predict(tx, ty, px, svc);
 	}
-	if constexpr (is_same<OneAgainstOneSVC<KT>, SVCT2>::value) {
+	else if (svc_selection == SVC_OPTION_1A1) {
 		cout << "One-against-one classification" << endl;
+		OneAgainstOneSVC<KT> svc (num_classes, num_attributes, kernel);
 		auto start_t = chrono::system_clock::now();
 		svc.train(x, y, C,
 			[&start_t](int i, int j, size_t psize) {
@@ -101,6 +112,42 @@ void do_main(
 			}
 		);
 		do_test_predict(tx, ty, px, svc);
+	}
+	else {
+		cerr << "Unknown svc selection" << endl;
+	}
+}
+
+void do_build_kernel(
+	const vector<double>& x, const vector<int>& y,
+	const vector<double>& tx, const vector<int>& ty,
+	const vector<double>& px, const double C, int num_attributes, int num_classes,
+	const optparse::Values& options
+) {
+	const string kernel_selection = options.is_set("kernel") ? options["kernel"] : KERNEL_OPTION_LINEAR;
+	if (kernel_selection == KERNEL_OPTION_LINEAR) {
+		cout << "Using linear kernel" << endl;
+		do_build_svc(x, y, tx, ty, px, C, LinearKernel(), num_attributes, num_classes, options);
+	}
+	else if (kernel_selection == KERNEL_OPTION_RBF) {
+		double gamma = 0.05;
+		if (options.is_set("kernel-gamma"))
+			gamma = double(options.get("kernel-gamma"));
+		cout << "Using RBF kernel with gamma=" << gamma << endl;
+		do_build_svc(x, y, tx, ty, px, C, RbfKernel(gamma), num_attributes, num_classes, options);
+	}
+	else if (kernel_selection == KERNEL_OPTION_POLYNOMIAL) {
+		double d = 2.0;
+		double c = 0.0;
+		if (options.is_set("kernel-d"))
+			d = double(options.get("kernel-d"));
+		if (options.is_set("kernel-c"))
+			c = double(options.get("kernel-c"));
+		cout << "Using Poly kernel with d=" << d << ", c=" << c << endl;
+		do_build_svc(x, y, tx, ty, px, C, PolynomialKernel(d,C), num_attributes, num_classes, options);
+	}
+	else {
+		cerr << "Unknown kernel selection" << endl;
 	}
 }
 
@@ -128,18 +175,8 @@ int main(int argc, char** argv) {
 	}
 	#endif
 
-	const string KERNEL_OPTION_LINEAR = "linear";
-	const string KERNEL_OPTION_POLYNOMIAL = "poly";
-	const string KERNEL_OPTION_RBF = "rbf";
 	const vector<string> KERNEL_OPTIONS {KERNEL_OPTION_LINEAR, KERNEL_OPTION_POLYNOMIAL, KERNEL_OPTION_RBF};
-
-	const string NORMALIZATION_OPTION_ZO = "0-1";
-	const string NORMALIZATION_OPTION_MOO = "-1-1";
-	const string NORMALIZATION_OPTION_STANDARD = "standard";
 	const vector<string> NORMALIZATION_OPTIONS {NORMALIZATION_OPTION_ZO, NORMALIZATION_OPTION_MOO, NORMALIZATION_OPTION_STANDARD};
-
-	const string SVC_OPTION_1AA = "1AA";
-	const string SVC_OPTION_1A1 = "1A1";
 	const vector<string> SVC_OPTIONS {SVC_OPTION_1AA, SVC_OPTION_1A1};
 
 	optparse::OptionParser parser;
@@ -319,18 +356,18 @@ int main(int argc, char** argv) {
 			for (int i = 0; i < num_attributes; ++i) {
 				auto x_min = *min_element(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes));
 				auto x_max = *max_element(strided_begin(x, i, num_attributes), strided_end(x, i, num_attributes));
-				for (auto& dataset : ref_range(x, test_x, predict_x))
-					for (double& x : strided_range(dataset, i, num_attributes))
+				for (auto& dataset : ref_range<decltype(x),decltype(test_x),decltype(predict_x)>(x, test_x, predict_x))
+					for (double& x : strided_range<decltype(x)>(dataset, i, num_attributes))
 						x = normalization_scale(x, scale_min, scale_max, x_min, x_max);
 			}
 		}
 		else if (options["normalization"] == NORMALIZATION_OPTION_STANDARD) {
 			cout << "Normalizing attributes to (0;1) distribution" << endl;
 			for (int i = 0; i < num_attributes; ++i) {
-				auto x_mean = mean(strided_range(x,i,num_attributes));
-				auto x_stdev = stdev(strided_range(x, i, num_attributes), x_mean);
-				for (auto& dataset : ref_range(x, test_x, predict_x))
-					for (double& x : strided_range(dataset, i, num_attributes))
+				auto x_mean = mean(strided_range<decltype(x)>(x,i,num_attributes));
+				auto x_stdev = stdev(strided_range<decltype(x)>(x, i, num_attributes), x_mean);
+				for (auto& dataset : ref_range<decltype(x), decltype(test_x), decltype(predict_x)>(x, test_x, predict_x))
+					for (double& x : strided_range<decltype(x)>(dataset, i, num_attributes))
 						x = normalization_standard(x, x_mean, x_stdev);
 			}
 		}
@@ -339,46 +376,5 @@ int main(int argc, char** argv) {
 			return 1;
 		}
 	}
-
-	string svc_selection = options.is_set("svc") ? options["svc"] : SVC_OPTION_1A1;
-	string kernel_selection = options.is_set("kernel") ? options["kernel"] : KERNEL_OPTION_LINEAR;
-	if (kernel_selection == KERNEL_OPTION_LINEAR) {
-		cout << "Using linear kernel" << endl;
-		auto k = LinearKernel();
-		if (svc_selection == SVC_OPTION_1AA) {
-			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstAllSVC<LinearKernel>(num_classes, num_attributes, k));
-		}
-		else if (svc_selection == SVC_OPTION_1A1) {
-			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstOneSVC<LinearKernel>(num_classes, num_attributes, k));
-		}
-	}
-	else if (kernel_selection == KERNEL_OPTION_RBF) {
-		double gamma = 0.05;
-		if (options.is_set("kernel-gamma"))
-			gamma = double(options.get("kernel-gamma"));
-		cout << "Using RBF kernel with gamma=" << gamma << endl;
-		auto k = RbfKernel(gamma);
-		if (svc_selection == SVC_OPTION_1AA) {
-			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstAllSVC<RbfKernel>(num_classes, num_attributes, k));
-		}
-		else if (svc_selection == SVC_OPTION_1A1) {
-			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstOneSVC<RbfKernel>(num_classes, num_attributes, k));
-		}
-	}
-	else if (kernel_selection == KERNEL_OPTION_POLYNOMIAL) {
-		double d = 2.0;
-		double c = 0.0;
-		if (options.is_set("kernel-d"))
-			d = double(options.get("kernel-d"));
-		if (options.is_set("kernel-c"))
-			c = double(options.get("kernel-c"));
-		cout << "Using Poly kernel with d=" << d << ", c=" << c << endl;
-		auto k = PolynomialKernel(d,C);
-		if (svc_selection == SVC_OPTION_1AA) {
-			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstAllSVC<PolynomialKernel>(num_classes, num_attributes, k));
-		}
-		else if (svc_selection == SVC_OPTION_1A1) {
-			do_main(x, y, test_x, test_y, predict_x, C, OneAgainstOneSVC<PolynomialKernel>(num_classes, num_attributes, k));
-		}
-	}
+	do_build_kernel(x, y, test_x, test_y, predict_x, C, num_attributes, num_classes, options);
 }
