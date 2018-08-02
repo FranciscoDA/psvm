@@ -6,119 +6,11 @@
 #include <numeric>
 #include <cmath>
 #include <algorithm>
+#include <thrust/device_vector.h>
 
 #include "svm.h"
 
-#define GRID_SIZE  512
-#define BLOCK_SIZE 256
-
 using namespace std;
-
-struct Search_t {
-	double score;
-	int index;
-};
-
-template<typename T>
-__global__ void cu_set(int n, T* dst, T value) {
-	unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-	if (i < n)
-	dst[i] = value;
-}
-
-template<typename F, typename H>
-__global__ void cu_map(int n, H* dst, F mapping) {
-	unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-	if (i < n)
-	dst[i] = mapping(i);
-}
-
-/* optimized map-reduce kernel */
-template<typename F, typename G, typename H>
-__global__ void cu_mr(off_t offset, H* g_out, F mapping, G reduction, bool reduce_output) {
-	__shared__ H sdata[BLOCK_SIZE];
-	unsigned int tid = threadIdx.x;
-	unsigned int i = blockIdx.x * blockDim.x * 2 + threadIdx.x + offset;
-
-	sdata[tid] = reduction(mapping(i), mapping(i+blockDim.x));
-	__syncthreads();
-
-	for (unsigned int s = blockDim.x/2; s > warpSize; s >>= 1) {
-		if (tid < s)
-			sdata[tid] = reduction(sdata[tid], sdata[tid+s]);
-		__syncthreads();
-	}
-	/*
-	do not sync threads in the last warp, warps are simd synchronous
-	unroll loop. assume warp_size=32
-	*/
-	if (tid < warpSize)
-		for (unsigned int s = warpSize; s > 0; s >>= 1)
-			sdata[tid] = reduction(sdata[tid], sdata[tid+s]);
-
-	if (tid == 0)
-		g_out[blockIdx.x] = reduce_output ? reduction(sdata[0], g_out[blockIdx.x]) : sdata[0];
-}
-/* map-reduce for trailing data */
-template<typename F, typename G, typename H>
-__global__ void cu_mr_tail(size_t offset, size_t n, H* g_out, F mapping, G reduction, bool reduce_output) {
-	__shared__ H sdata[BLOCK_SIZE];
-	unsigned int tid = threadIdx.x;
-	unsigned int i = blockIdx.x * blockDim.x * 2 + threadIdx.x + offset;
-
-	if (i >= n) return;
-	sdata[tid] = (i+blockDim.x < n) ? reduction(mapping(i), mapping(i+blockDim.x)) : mapping(i);
-	__syncthreads();
-
-	for (unsigned int s = blockDim.x/2; s > warpSize; s >>= 1) {
-		if (tid < s and i+s < n)
-			sdata[tid] = reduction(sdata[tid], sdata[tid+s]);
-		__syncthreads();
-	}
-
-	if (tid < warpSize)
-		for (unsigned int s = warpSize; s > 0; s >>= 1)
-			if (i+s < n)
-				sdata[tid] = reduction(sdata[tid], sdata[tid+s]);
-
-	if (tid == 0)
-		g_out[blockIdx.x] = reduce_output ? reduction(sdata[0], g_out[blockIdx.x]) : sdata[0];
-}
-template <typename F, typename G, typename H>
-H cu_mr_wrapper(size_t n, H* d_buf, F mapping, G reduction) {
-	H h_buf[GRID_SIZE];
-	const size_t kernel_capacity = BLOCK_SIZE*GRID_SIZE*2;
-	size_t i = 0;
-	for (; i + kernel_capacity < n; i+= kernel_capacity) {
-		cu_mr<<<GRID_SIZE, BLOCK_SIZE>>>(i, d_buf, mapping, reduction, i > 0);
-	}
-	if (i < n) {
-		cu_mr_tail<<<GRID_SIZE, BLOCK_SIZE>>>(i, n, d_buf, mapping, reduction, i > 0);
-	}
-	cudaMemcpy(h_buf, d_buf, sizeof(H) * GRID_SIZE, cudaMemcpyDeviceToHost);
-	H result = h_buf[0];
-
-	int a = n/(BLOCK_SIZE*2) + (n%(BLOCK_SIZE*2) ? 1 : 0);
-	for (int j = 1; j < min(GRID_SIZE, a); ++j)
-		result = reduction(result, h_buf[j]);
-	return result;
-}
-
-template<typename SVMT>
-__global__ void cusmo_update_gradient(size_t n, size_t d, SVMT* g_svm, double* g_x, int* g_y, double* g_alpha, double* g_g, double lambda, int i, int j)
-{
-	unsigned int k = blockIdx.x * blockDim.x + threadIdx.x;
-	if (k >= n)
-	return;
-
-	double Kik = g_svm->kernel(&g_x[i*d], &g_x[k*d]),
-	Kjk = g_svm->kernel(&g_x[j*d], &g_x[k*d]);
-	g_g[k] += lambda * g_y[k] * (Kjk - Kik);
-}
-__global__ void cusmo_update_alpha(int* g_y, double* g_alpha, int i, int j, double lambda) {
-	g_alpha[i] += g_y[i] * lambda;
-	g_alpha[j] -= g_y[j] * lambda;
-}
 
 /* sequential minimal optimization method */
 template<typename SVMT>
@@ -126,90 +18,107 @@ unsigned int smo(SVMT& svm, const vector<double>& x, const vector<int>& y, doubl
 	size_t n = y.size();
 	size_t d = svm.getD();
 
-	std::vector<double> alpha (n, 0.0);
+	typename SVMT::kernel_type* d_kernel;
+	cudaMalloc(&d_kernel, sizeof(typename SVMT::kernel_type));
+	cudaMemcpy(d_kernel, (void*) &svm.kernel, sizeof(typename SVMT::kernel_type), cudaMemcpyHostToDevice);
 
-	SVMT* d_svm;
-	double* d_x;
-	int* d_y;
-	double* d_alpha;
-	double* d_g;
-	cudaMalloc(&d_svm,    sizeof(SVMT));
-	cudaMalloc(&d_x,      sizeof(double) * x.size());
-	cudaMalloc(&d_y,      sizeof(int) * y.size());
-	cudaMalloc(&d_alpha,  sizeof(double) * n);
-	cudaMalloc(&d_g,      sizeof(double) * n);
+	thrust::device_vector<double> d_x = x;
+	auto d_x_ptr = d_x.data().get();
+	thrust::device_vector<int> d_y = y;
+	auto d_y_ptr = d_y.data().get();
+	thrust::device_vector<double> d_alpha (n, 0.);
+	auto d_alpha_ptr = d_alpha.data().get();
+	thrust::device_vector<double> d_g(n, 0.);
+	auto d_g_ptr = d_g.data().get();
 
-	cudaMemcpy(d_svm, (void*) &svm,     sizeof(SVMT),            cudaMemcpyHostToDevice);
-	cudaMemcpy(d_x,   (void*) x.data(), sizeof(double)*x.size(), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_y,   (void*) y.data(), sizeof(int)*y.size(),    cudaMemcpyHostToDevice);
-	cu_set<<<GRID_SIZE, BLOCK_SIZE>>>(n, d_alpha, 0.0);
-	cu_set<<<GRID_SIZE, BLOCK_SIZE>>>(n, d_g,     1.0);
+	thrust::counting_iterator<int> ids_begin(0);
+	thrust::counting_iterator<int> ids_end = ids_begin+n;
 
+	thrust::device_vector<double> d_k_cache(n);
+	auto d_k_cache_ptr = d_k_cache.data().get();
+	thrust::transform(ids_begin, ids_end, d_k_cache.begin(), [d,d_kernel,d_x_ptr] __device__ (int i){
+		return d_kernel->operator()(d_x_ptr+i*d, d_x_ptr+i*d, d);
+	});
+	thrust::device_vector<double> d_ki_cache(n);
+	auto d_ki_cache_ptr = d_ki_cache.data().get();
+
+	using search_t = thrust::pair<double, int>;
 	auto map_i = [=] __device__ (int i) {
-		double B = (C * d_y[i] + C)/2.0;
-		return Search_t {d_y[i] * d_alpha[i] < B ? d_y[i] * d_g[i] : -INFINITY, i};
-	};
-	auto reduce_i = [] __device__ __host__ (const Search_t& arg1, const Search_t& arg2) {
-		return arg1.score < arg2.score ? arg2 : arg1;
+		double B = (C * d_y_ptr[i] + C)/2.0;
+		return search_t(d_y_ptr[i] * d_alpha_ptr[i] < B ? d_y_ptr[i] * d_g_ptr[i] : -INFINITY, i);
 	};
 
-	auto map_j = [=] __device__ (int i) {
-		double A = (C * d_y[i] - C)/2.0;
-		return Search_t {A < d_y[i] * d_alpha[i] ? d_y[i] * d_g[i] : INFINITY, i};
-	};
-	auto reduce_j = [] __device__ __host__ (const Search_t& arg1, const Search_t& arg2) {
-		return arg1.score < arg2.score ? arg1 : arg2;
+	auto map_jg = [=] __device__ (int i) {
+		double A = (C * d_y_ptr[i] - C)/2.0;
+		return A < d_y_ptr[i] * d_alpha_ptr[i] ? d_y_ptr[i] * d_g_ptr[i] : INFINITY;
 	};
 
-	Search_t* d_result;
-	cudaMalloc(&d_result, sizeof(Search_t)*GRID_SIZE);
-	Search_t* d_result2;
-	cudaMalloc(&d_result2, sizeof(Search_t)*GRID_SIZE);
-	//vector<Search_t> gather_result (GRID_SIZE);
 	unsigned int iterations = 0;
 	while(true) {
 		++iterations;
-		Search_t result_i = cu_mr_wrapper(n, d_result, map_i, reduce_i);
-		Search_t result_j = cu_mr_wrapper(n, d_result2, map_j, reduce_j);
+		auto i_result = thrust::transform_reduce(ids_begin, ids_end, map_i, search_t(-INFINITY, -1), thrust::maximum<search_t>());
+		double g_max = thrust::get<0>(i_result);
+		int i = thrust::get<1>(i_result);
 
-		int i = result_i.index;
-		int j = result_j.index;
-		double i_max = result_i.score;
-		double j_min = result_j.score;
+		/* fill the cache for the ith row of the kernel matrix */
+		thrust::transform(ids_begin, ids_end, d_ki_cache.begin(), [i,d,d_kernel,d_x_ptr] __device__ (int k){
+			return (*d_kernel)(d_x_ptr + i*d, d_x_ptr + k*d, d);
+		});
 
-		//std::cout << "i: " << i << " i_max: " << i_max << " j: " << j << " j_min: " << j_min << endl;
+		/* get the minimum value for the gradient. note that this is not the second example to optimize */
+		double g_min = thrust::transform_reduce(ids_begin, ids_end, map_jg, INFINITY, thrust::minimum<double>());
 
-		if (i_max - j_min < epsilon) break;
+		auto map_jo = [=] __device__ (int k) {
+			double A = (C * d_y_ptr[k] - C)/2.0;
+			if (d_y_ptr[i] * d_alpha_ptr[i] < A)
+				return search_t(INFINITY, -1);
+			double b = g_max + d_y_ptr[k] * d_g_ptr[k];
+			double lambda = thrust::max(d_k_cache_ptr[i] + d_k_cache_ptr[k] - 2 * d_ki_cache_ptr[k], 1e-12);
+			return b > 0. ? search_t(-(b*b)/lambda, k) : search_t(INFINITY, -1);
+		};
+		search_t j_result = thrust::transform_reduce(ids_begin, ids_end, map_jo, search_t(INFINITY, -1), thrust::minimum<search_t>());
+		int j = thrust::get<1>(j_result);
 
-		double Kii = svm.kernel(&x[i*d], &x[i*d]),
-		Kij = svm.kernel(&x[i*d], &x[j*d]),
-		Kjj = svm.kernel(&x[j*d], &x[j*d]);
+		if (g_max-g_min < epsilon or i==-1 or j==-1)
+			break;
 
-		double Aj = (C * y[j] - C)/2.0;
-		double Bi = (C * y[i] + C)/2.0;
-		double lambda = min(Bi - y[i] * alpha[i], y[j] * alpha[j] - Aj);
-		lambda = min(lambda, (i_max-j_min)/(Kii+Kjj-2*Kij));
+		const double Kii = d_k_cache[i];
+		const double Kjj = d_k_cache[j];
+		const double Kij = d_ki_cache[j];
 
-		cusmo_update_gradient<<<GRID_SIZE, BLOCK_SIZE>>>(n, d, d_svm, d_x, d_y, d_alpha, d_g, lambda, i, j);
-		cusmo_update_alpha<<<1,1>>>(d_y, d_alpha, i, j, lambda);
-		alpha[i] += y[i] * lambda;
-		alpha[j] -= y[j] * lambda;
+		double lambda = max(Kii + Kjj - 2 * Kij, 1e-12);
+		double step = (-y[i] * d_g[i] + y[j] * d_g[j])/lambda;
+
+		const double old_ai = d_alpha[i];
+		const double old_aj = d_alpha[j];
+		double ai = old_ai;
+		double aj = old_aj;
+
+		ai += y[i] * step;
+		aj -= y[j] * step;
+
+		double sum = y[i] * old_ai + y[j] * old_aj;
+		ai = ai < 0. ? 0. : ai > C ? C : ai;
+		aj = y[j] * (sum - y[i] * ai);
+		aj = aj < 0. ? 0. : aj > C ? C : aj;
+		ai = y[i] * (sum - y[j] * aj);
+
+		const double delta_ai = ai - old_ai;
+		const double delta_aj = aj - old_aj;
+		d_alpha[i] = ai;
+		d_alpha[j] = aj;
+
+		thrust::transform(ids_begin, ids_end, d_g.begin(), [=] __device__ (int k) {
+			double Kik = d_ki_cache_ptr[k];
+			double Kjk = (*d_kernel)(d_x_ptr + j*d, d_x_ptr + k*d, d);
+			return d_g_ptr[k] + d_y_ptr[k] * (Kik * delta_ai * d_y_ptr[i] + Kjk * delta_aj * d_y_ptr[j]);
+		});
 	}
+	cudaFree(d_kernel);
+	vector<double> alpha (d_alpha.begin(), d_alpha.end());
 	svm.fit(x, y, alpha, C);
-	cudaFree(d_result);
-	cudaFree(d_result2);
-	cudaFree(d_svm);
-	cudaFree(d_x);
-	cudaFree(d_y);
-	cudaFree(d_alpha);
-	cudaFree(d_g);
+
 	return iterations;
-}
-
-/* modified gradient projection method implementation */
-template<typename SVMT>
-void mgp(SVMT& svm, const vector<double>& x, const vector<double>& y, double epsilon, double C) {
-
 }
 
 #endif
