@@ -12,5 +12,5 @@ add_executable (cusvm src/main.cu)
 target_link_libraries (svm io_formats)
 target_link_libraries (cusvm io_formats)
 
-set_target_properties (svm PROPERTIES CXX_STANDARD 14 RUNTIME_OUTPUT_DIRECTORY bin)
+set_target_properties (svm PROPERTIES CXX_STANDARD 17 RUNTIME_OUTPUT_DIRECTORY bin)
 set_target_properties (cusvm PROPERTIES LINKER_LANGUAGE CUDA CUDA_STANDARD 14 RUNTIME_OUTPUT_DIRECTORY cubin CUDA_SEPARABLE_COMPILATION on)

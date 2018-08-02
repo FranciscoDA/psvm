@@ -15,7 +15,7 @@ using namespace std;
 
 class LinearKernel {
 public:
-	CUDA_CALLABLE_MEMBER double K(const double* x1, const double* x2, size_t d) const {
+	CUDA_CALLABLE_MEMBER double operator()(const double* x1, const double* x2, size_t d) const {
 		double result = 0.0;
 		for (size_t i = 0; i < d; ++i)
 			result += x1[i] * x2[i];
@@ -27,7 +27,7 @@ class RbfKernel {
 public:
 	RbfKernel(double gamma) : _gamma(-2*gamma*gamma) {
 	}
-	CUDA_CALLABLE_MEMBER double K(const double* x1, const double* x2, size_t d) const {
+	CUDA_CALLABLE_MEMBER double operator()(const double* x1, const double* x2, size_t d) const {
 		double result = 0.0;
 		for (size_t i = 0; i < d; ++i)
 			result += (x1[i] - x2[i]) * (x1[i] - x2[i]);
@@ -41,7 +41,7 @@ class PolynomialKernel {
 public:
 	PolynomialKernel(double d, double c) : _d(d), _c(c) {
 	}
-	CUDA_CALLABLE_MEMBER double K(const double* x1, const double* x2, size_t d) const {
+	CUDA_CALLABLE_MEMBER double operator()(const double* x1, const double* x2, size_t d) const {
 		double result = _c;
 		for (size_t i = 0; i < d; ++i)
 			result += x1[i] * x2[i];
@@ -55,7 +55,8 @@ private:
 template<typename KT>
 class SVM {
 public:
-	SVM(size_t d, const KT& k) : _d(d), _b(0.0), _kernel(k) {
+	using kernel_type = KT;
+	SVM(size_t d, const KT& k) : kernel(k), _d(d), _b(0.0)  {
 	}
 
 	size_t getD() const {
@@ -92,17 +93,13 @@ public:
 	double decision(const double* x) const {
 		double sum = _b;
 		for (int i = 0; i < _sv_alpha_y.size(); ++i) {
-			sum += _sv_alpha_y[i] * kernel(&_sv_x[i*_d], x);
+			sum += _sv_alpha_y[i] * kernel(&_sv_x[i*_d], x, _d);
 		}
 		return sum;
 	}
 
 	bool predict(const double* x) const {
 		return decision(x) > 0;
-	}
-
-	CUDA_CALLABLE_MEMBER double kernel(const double* x1, const double* x2) const {
-		return _kernel.K(x1, x2, _d);
 	}
 
 	const std::vector<double>& getSVX() const {
@@ -114,12 +111,12 @@ public:
 	size_t getSupportVectorCount() const {
 		return _sv_alpha_y.size();
 	}
+	const KT kernel;
 private:
 	size_t _d;
 	double _b;
 	std::vector<double> _sv_alpha_y; // alpha_i * y_i of each sv
 	std::vector<double> _sv_x;       // x_i of each sv
-	const KT _kernel;
 };
 
 template<typename SVMT>
