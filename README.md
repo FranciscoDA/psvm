@@ -5,6 +5,7 @@ Sequential and parallel (CUDA) implementations of SVM classifiers.
  * CMake 3.8 (required for native CUDA support)
  * Boost 1.60
  * CUDA SDK
+ * C++14 compiler
 
 ## Compilation
  * Clone this repository: `git clone https://github.com/franciscoda/psvm`
@@ -16,7 +17,7 @@ Sequential and parallel (CUDA) implementations of SVM classifiers.
 
 ## Features
 
-Run `./svm --help` or `./cusvm --help` to see a list of parameters.
+Run `bin/svm --help` or `bin/cusvm --help` to see a list of parameters.
 
 ### Supported input formats
  * CSV
@@ -25,9 +26,9 @@ Run `./svm --help` or `./cusvm --help` to see a list of parameters.
 Note that attributes and labels must be in separate files.
 
 ### Supported normalization methods:
- * `nz`: (x-mean)/stdev. Each attribute is scaled according to the normal distribution
- * `n1`: (x-min)/(max-min). Each attribute is scaled to \[0;1\] range
- * `n2`: -1 + (x-min)\*(1-(-1))/(max-min). Each attribute is scaled to \[-1;1\] range
+ * `--nz`: (x-mean)/stdev. Each attribute is scaled according to the normal distribution
+ * `--n1`: (x-min)/(max-min). Each attribute is scaled to \[0;1\] range
+ * `--n2`: -1 + (x-min)\*(1-(-1))/(max-min). Each attribute is scaled to \[-1;1\] range
 
 ### Supported kernels (--kernel flag)
  * `--linear`: xi \* xj
