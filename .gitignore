@@ -3,5 +3,4 @@ mnist/*
 !mnist/*.md
 !mnist/*.py
 !mnist/*.sh
-*.out
 build/
