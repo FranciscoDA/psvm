@@ -1,13 +1,9 @@
-
-#ifndef _CLASSIFIER_H_
-#define _CLASSIFIER_H_
+#pragma once
 
 #include <vector>
 #include <algorithm>
 
 #include "svm.h"
-
-using namespace std;
 
 template<typename KT>
 class OneAgainstAllSVC {
@@ -18,10 +14,10 @@ public:
 	}
 
 	template <typename F, typename G>
-	void train(const vector<double>& x, const vector<int>& y, const double C, F cb_before, G cb_after) {
-		vector<int> y1 (y.size());
+	void train(const std::vector<double>& x, const std::vector<int>& y, const double C, F cb_before, G cb_after) {
+		std::vector<int> y1 (y.size());
 		for (int label = 0; label < _classes; ++label) {
-			transform(begin(y), end(y), begin(y1), [label](const int& y_i){ return y_i==label ? 1 : -1; });
+			std::transform(begin(y), end(y), begin(y1), [label](const int& y_i){ return y_i==label ? 1 : -1; });
 			cb_before(label);
 			_classifiers.emplace_back(_d, _kernel);
 			unsigned int iterations = smo(_classifiers.back(), x, y1, 0.001, C);
@@ -44,7 +40,7 @@ public:
 	const int _classes;
 	const KT _kernel;
 private:
-	vector<SVM<KT>> _classifiers;
+	std::vector<SVM<KT>> _classifiers;
 	const int _d;
 };
 
@@ -57,11 +53,11 @@ public:
 	}
 
 	template<typename F, typename G>
-	void train(const vector<double>& x, const vector<int>& y, const double C, F cb_before, G cb_after) {
+	void train(const std::vector<double>& x, const std::vector<int>& y, const double C, F cb_before, G cb_after) {
 		for (int i = 0; i < _classes-1; i++) {
 			for (int j = i+1; j < _classes; j++) {
-				vector<double> x1;
-				vector<int> y1;
+				std::vector<double> x1;
+				std::vector<int> y1;
 				for (int k = 0; k < y.size(); k++) {
 					if (y[k] == i or y[k] == j) {
 						y1.push_back(y[k] == i ? 1 : -1);
@@ -77,7 +73,7 @@ public:
 	}
 
 	int predict(const double* x) const {
-		vector<int> scores(_classes, 0);
+		std::vector<int> scores(_classes, 0);
 		int k = 0;
 		for (int i = 0; i < _classes-1; i++) {
 			for (int j = i+1; j < _classes; j++) {
@@ -94,8 +90,16 @@ public:
 	const int _classes;
 	const KT _kernel;
 private:
-	vector<SVM<KT>> _classifiers;
+	std::vector<SVM<KT>> _classifiers;
 	const int _d;
 };
 
+#ifndef SUPPRESS_CLASSIFIER_EXTERN_TEMPLATES
+extern template class OneAgainstAllSVC<LinearKernel>;
+extern template class OneAgainstAllSVC<RbfKernel>;
+extern template class OneAgainstAllSVC<PolynomialKernel>;
+
+extern template class OneAgainstOneSVC<LinearKernel>;
+extern template class OneAgainstOneSVC<RbfKernel>;
+extern template class OneAgainstOneSVC<PolynomialKernel>;
 #endif

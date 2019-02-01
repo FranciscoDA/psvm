@@ -1,6 +1,0 @@
-[submodule "optparse"]
-	path = src/optparse
-	url = https://github.com/myint/optparse
-[submodule "src/iterutils"]
-	path = src/iterutils
-	url = https://github.com/FranciscoDA/iterutils

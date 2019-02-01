@@ -1,16 +1,11 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 3.8)
+PROJECT(psvm LANGUAGES CXX CUDA)
 
-cmake_minimum_required (VERSION 3.0)
-project (psvm LANGUAGES CXX CUDA)
+FIND_PACKAGE(Boost 1.60.0 REQUIRED COMPONENTS program_options)
+INCLUDE(FindThrust.cmake)
 
-SET (CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-extended-lambda")
+SET(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-extended-lambda -lcudart -lcudadevrt -lcuda")
 
-add_library    (io_formats src/io_formats.cpp)
+ADD_SUBDIRECTORY(libpsvm)
+ADD_SUBDIRECTORY(psvm-cli)
 
-add_executable (svm src/main.cpp)
-add_executable (cusvm src/main.cu)
-
-target_link_libraries (svm io_formats)
-target_link_libraries (cusvm io_formats)
-
-set_target_properties (svm PROPERTIES CXX_STANDARD 17 RUNTIME_OUTPUT_DIRECTORY bin)
-set_target_properties (cusvm PROPERTIES LINKER_LANGUAGE CUDA CUDA_STANDARD 14 RUNTIME_OUTPUT_DIRECTORY cubin CUDA_SEPARABLE_COMPILATION on)
