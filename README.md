@@ -11,7 +11,7 @@ Sequential and parallel (CUDA) implementations of SVM classifiers.
  * Clone this repository: `git clone https://github.com/franciscoda/psvm`
  * Create build directory: `mkdir build && cd build`
  * Run CMake and (optionally) specify a GPU architecture: `cmake .. -DCMAKE_CUDA_FLAGS="-arch=sm30"`
- * Compile `make`
+ * Compile: `make`
  * The output paths for the CLI executables executables are `build/bin/svm` and `build/bin/cusvm`
  * The output paths for the static libraries are `build/lib/libsvm.a` and `build/lib/libcusvm.a`
 

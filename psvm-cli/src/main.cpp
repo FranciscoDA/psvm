@@ -9,11 +9,6 @@
 
 #include <psvm/classifier.h>
 #include <psvm/svm.h>
-#ifdef __CUDACC__
-#include <psvm/cuda_solvers.h>
-#else
-#include <psvm/sequential_solvers.h>
-#endif
 
 #include "io_formats.h"
 #include "utils.h"
@@ -40,7 +35,7 @@ void do_test_predict(
 	if (ty.size() > 0) {
 		std::vector<int> confusion_matrix (svc._classes * svc._classes);
 		for (int i = 0; i < ty.size(); ++i) {
-			int prediction = svc.predict(&tx[i * svc.getD()]);
+			int prediction = svc.predict(&tx[i * svc.getDimensions()]);
 			confusion_matrix[ty[i] * svc._classes + prediction]++;
 		}
 		int tptn = 0;
@@ -64,8 +59,8 @@ void do_test_predict(
 	}
 	if (px.size() > 0) {
 		std::cout << "Predictions:" << std::endl;
-		for (int i = 0; i < px.size()/svc.getD(); ++i) {
-			std::cout << i << ". " << svc.predict(&px[i*svc.getD()]) << std::endl;
+		for (int i = 0; i < px.size()/svc.getDimensions(); ++i) {
+			std::cout << i << ". " << svc.predict(&px[i*svc.getDimensions()]) << std::endl;
 		}
 	}
 }
@@ -104,10 +99,10 @@ void do_build_svc(
 				std::cout << "Training " << i << " vs. " << j << " (problem size: " << psize << ")" << std::endl;
 				start_t = std::chrono::system_clock::now();
 			},
-			[start_t](unsigned int nsvs, double b, unsigned int iters) {
+			[start_t](unsigned int nsvs, unsigned int iters) {
 				auto end_t = std::chrono::system_clock::now();
 				std::chrono::duration<double> elapsed = end_t-start_t;
-				std::cout << "#SVs: " << nsvs << " B: " << b << " (" << iters << " iterations in " << elapsed.count() << "s)" << std::endl;
+				std::cout << "#SVs: " << nsvs << " (" << iters << " iterations in " << elapsed.count() << "s)" << std::endl;
 			}
 		);
 		do_test_predict(tx, ty, px, svc);
@@ -204,7 +199,7 @@ int main(int argc, char** argv) {
 	try {
 		po::notify(options);
 	}
-	catch (po::required_option e) {
+	catch (const po::required_option& e) {
 		std::cerr << e.what() << std::endl;
 		return 1;
 	}

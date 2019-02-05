@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <cmath>
+
 #include "kernels.h"
 
 template<typename KT>
@@ -20,7 +21,7 @@ public:
 	void fit(const std::vector<double>& x, const std::vector<int>& y, const std::vector<double>& alpha, double C) {
 		_sv_x.clear();
 		_sv_alpha_y.clear();
-		for (int i = 0; i < y.size(); ++i) {
+		for (size_t i = 0; i < y.size(); ++i) {
 			if (alpha[i] > 0.) {
 				_sv_alpha_y.push_back(y[i] * alpha[i]);
 				_sv_x.insert(end(_sv_x), begin(x) + i*_dimensions, begin(x) + (i+1)*_dimensions);
@@ -30,7 +31,7 @@ public:
 		_bias = 0.;
 		double b_sum = 0.;
 		double b_count = 0.;
-		for (int i = 0; i < _sv_alpha_y.size(); ++i) {
+		for (size_t i = 0; i < _sv_alpha_y.size(); ++i) {
 			double Ai = _sv_alpha_y[i] > 0. ? 0. : -C;
 			double Bi = _sv_alpha_y[i] > 0. ? C  : 0.;
 			if (Ai < _sv_alpha_y[i] && _sv_alpha_y[i] < Bi) {
@@ -45,7 +46,7 @@ public:
 
 	double decision(const double* first) const {
 		double sum = _bias;
-		for (int i = 0; i < _sv_alpha_y.size(); ++i) {
+		for (size_t i = 0; i < _sv_alpha_y.size(); ++i) {
 			sum += _sv_alpha_y[i] * kernel(first, first + _dimensions, &_sv_x[i * _dimensions]);
 		}
 		return sum;

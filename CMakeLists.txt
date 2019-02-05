@@ -1,10 +1,19 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.8)
-PROJECT(psvm LANGUAGES CXX CUDA)
+PROJECT(psvm LANGUAGES CXX)
 
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic")
 FIND_PACKAGE(Boost 1.60.0 REQUIRED COMPONENTS program_options)
-INCLUDE(FindThrust.cmake)
 
-SET(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-extended-lambda -lcudart -lcudadevrt -lcuda")
+# Check CUDA support
+INCLUDE(CheckLanguage)
+CHECK_LANGUAGE(CUDA)
+IF(CMAKE_CUDA_COMPILER)
+	ENABLE_LANGUAGE(CUDA)
+	INCLUDE(FindThrust.cmake)
+	SET(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-extended-lambda")
+ELSE()
+	MESSAGE(STATUS "No cuda support")
+ENDIF()
 
 ADD_SUBDIRECTORY(libpsvm)
 ADD_SUBDIRECTORY(psvm-cli)
