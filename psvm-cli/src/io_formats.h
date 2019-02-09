@@ -7,6 +7,7 @@
 
 struct DatasetError {
 	enum ErrorCode {
+		NONE,
 		INCONSISTENT_ROWS,
 		HEADER_MISMATCH,
 		INVALID_TYPE,
@@ -14,8 +15,10 @@ struct DatasetError {
 	};
 
 	const ErrorCode code;
-	const size_t position=0;
-	const std::string filename="";
+	const size_t position;
+	const std::string filename;
+
+	DatasetError(ErrorCode code, size_t position=0, const std::string& filename="");
 };
 
 enum class IO_FORMAT {
@@ -25,7 +28,7 @@ enum class IO_FORMAT {
 };
 const std::vector<std::string> IO_FORMAT_NAMES {"csv", "idx"};
 
-IO_FORMAT format_name_to_io_format(std::string name);
+IO_FORMAT format_name_to_io_format(const std::string& name);
 const std::string& io_format_to_format_name(IO_FORMAT fmt);
 
 template<typename T>
