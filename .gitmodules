@@ -1,0 +1,3 @@
+[submodule "cmake/cuda_support"]
+	path = cmake/cuda_support
+	url = https://github.com/CLIUtils/cuda_support
