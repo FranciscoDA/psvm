@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <cmath>
+#include <cstddef>
 
 #include "kernels.h"
 
