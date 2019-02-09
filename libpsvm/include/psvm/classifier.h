@@ -2,13 +2,10 @@
 
 #include <vector>
 #include <algorithm>
+#include <functional>
 
 #include "svm.h"
-#ifdef __CUDACC__
-#include <psvm/cuda_solvers.h>
-#else
-#include <psvm/sequential_solvers.h>
-#endif
+#include "smo.h"
 
 template<typename KT>
 class OneAgainstAllSVC {
@@ -18,19 +15,21 @@ public:
 	OneAgainstAllSVC(int classes, int d, const KT& kernel) : _classes(classes), _kernel(kernel), _dimensions(d) {
 	}
 
-	template <typename F, typename G>
-	void train(const std::vector<double>& x, const std::vector<int>& y, const double C, F&& cb_before, G&& cb_after) {
+	bool train(const std::vector<double>& x, const std::vector<int>& y, const double C, std::function<bool(int)> cb_before, std::function<bool(size_t, size_t)> cb_after) {
 		std::vector<int> y1 (y.size());
 		for (int label = 0; label < _classes; ++label) {
 			std::transform(begin(y), end(y), begin(y1), [label](const int& y_i){ return y_i==label ? 1 : -1; });
-			cb_before(label);
+			if (cb_before(label))
+				return false;
 			_classifiers.emplace_back(_dimensions, _kernel);
-			unsigned int iterations = smo(_classifiers.back(), x, y1, 0.001, C);
-			cb_after(_classifiers.back().getSupportVectorCount(), iterations);
+			unsigned int iterations = smo(_classifiers.back(), x, y1, 0.01, C);
+			if (cb_after(_classifiers.back().getSupportVectorCount(), iterations))
+				return false;
 		}
+		return true;
 	}
-	void train(const std::vector<double>& x, const std::vector<int>& y, const double C) {
-		train(x, y, C, [](int){}, [](size_t, size_t){});
+	bool train(const std::vector<double>& x, const std::vector<int>& y, const double C) {
+		return train(x, y, C, [](int){ return false; }, [](size_t, size_t){ return false; });
 	}
 
 	int predict(const double* x) const {
@@ -60,8 +59,7 @@ public:
 	OneAgainstOneSVC(int classes, int d, const KT& kernel) : _classes(classes), _kernel(kernel), _dimensions(d) {
 	}
 
-	template<typename F, typename G>
-	void train(const std::vector<double>& x, const std::vector<int>& y, const double C, F&& cb_before, G&& cb_after) {
+	bool train(const std::vector<double>& x, const std::vector<int>& y, const double C, std::function<bool(int, int, size_t)> cb_before, std::function<bool(size_t, size_t)> cb_after) {
 		for (int i = 0; i < _classes-1; i++) {
 			for (int j = i+1; j < _classes; j++) {
 				std::vector<double> x1;
@@ -72,15 +70,18 @@ public:
 						x1.insert(end(x1), begin(x) + k*_dimensions, begin(x) + (k+1)*_dimensions);
 					}
 				}
-				cb_before(i, j, y1.size());
+				if (cb_before(i, j, y1.size()))
+					return false;
 				_classifiers.emplace_back(_dimensions, _kernel);
-				unsigned int iterations = smo(_classifiers.back(), x1, y1, 0.001, C);
-				cb_after(_classifiers.back().getSupportVectorCount(), iterations);
+				unsigned int iterations = smo(_classifiers.back(), x1, y1, 0.01, C);
+				if (cb_after(_classifiers.back().getSupportVectorCount(), iterations))
+					return false;
 			}
 		}
+		return true;
 	}
-	void train(const std::vector<double>& x, const std::vector<int>& y, const double C) {
-		train(x, y, C, [](int, int, size_t){}, [](size_t, size_t){});
+	bool train(const std::vector<double>& x, const std::vector<int>& y, const double C) {
+		return train(x, y, C, [](int, int, size_t){ return false; }, [](size_t, size_t){ return false; });
 	}
 
 	int predict(const double* x) const {
