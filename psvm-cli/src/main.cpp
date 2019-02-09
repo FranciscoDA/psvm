@@ -34,7 +34,7 @@ void do_test_predict(
 ) {
 	if (ty.size() > 0) {
 		std::vector<int> confusion_matrix (svc._classes * svc._classes);
-		for (int i = 0; i < ty.size(); ++i) {
+		for (size_t i = 0; i < ty.size(); ++i) {
 			int prediction = svc.predict(&tx[i * svc.getDimensions()]);
 			confusion_matrix[ty[i] * svc._classes + prediction]++;
 		}
@@ -59,7 +59,7 @@ void do_test_predict(
 	}
 	if (px.size() > 0) {
 		std::cout << "Predictions:" << std::endl;
-		for (int i = 0; i < px.size()/svc.getDimensions(); ++i) {
+		for (size_t i = 0; i < px.size()/svc.getDimensions(); ++i) {
 			std::cout << i << ". " << svc.predict(&px[i*svc.getDimensions()]) << std::endl;
 		}
 	}
@@ -81,11 +81,13 @@ void do_build_svc(
 			[&start_t](int i) {
 				std::cout << "Training " << i << " vs. all" << std::endl;
 				start_t = std::chrono::system_clock::now();
+				return false;
 			},
-			[start_t](unsigned int nsvs, unsigned int iters) {
+			[&start_t](unsigned int nsvs, unsigned int iters) {
 				auto end_t = std::chrono::system_clock::now();
 				std::chrono::duration<double> elapsed = end_t-start_t;
 				std::cout << "#SVs: " << nsvs << "(" << iters << " iterations in " << elapsed.count() << "s)" << std::endl;
+				return false;
 			}
 		);
 		do_test_predict(tx, ty, px, svc);
@@ -98,11 +100,13 @@ void do_build_svc(
 			[&start_t](int i, int j, size_t psize) {
 				std::cout << "Training " << i << " vs. " << j << " (problem size: " << psize << ")" << std::endl;
 				start_t = std::chrono::system_clock::now();
+				return false;
 			},
-			[start_t](unsigned int nsvs, unsigned int iters) {
+			[&start_t](unsigned int nsvs, unsigned int iters) {
 				auto end_t = std::chrono::system_clock::now();
 				std::chrono::duration<double> elapsed = end_t-start_t;
 				std::cout << "#SVs: " << nsvs << " (" << iters << " iterations in " << elapsed.count() << "s)" << std::endl;
+				return false;
 			}
 		);
 		do_test_predict(tx, ty, px, svc);
@@ -294,14 +298,14 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-	const int num_attributes = x.size() / y.size();
+	const size_t num_attributes = x.size() / y.size();
 
 	std::set<int> y_set(begin(y), end(y));
-	const int num_classes = y_set.size();
-	std::cout << x.size() << " training datapoints divided between " << y.size() << " instances and " << num_classes << " classes" << std::endl;
+	const size_t num_classes = y_set.size();
+	std::cout << x.size() << " training datapoints: " << num_attributes << " attributes x " << y.size() << " instances and " << num_classes << " classes" << std::endl;
 	std::cout << test_x.size() << " testing datapoints" << std::endl;
 
-	for (int i = 0; i < num_classes; i++) {
+	for (size_t i = 0; i < num_classes; i++) {
 		if (y_set.find(i) == end(y_set)) {
 			std::cerr << "ERROR: classes are not contiguous" << std::endl;
 			return 1;
@@ -318,8 +322,8 @@ int main(int argc, char** argv) {
 
 	// normalize using feature scaling
 	if (options.count(NORMALIZATION_OPTION_1) or options.count(NORMALIZATION_OPTION_2)) {
-		double scale_min;
-		double scale_max;
+		double scale_min = 0.;
+		double scale_max = 0.;
 		if (options.count(NORMALIZATION_OPTION_1)) {
 			scale_min = 0.0, scale_max = 1.0;
 			std::cout << "Scaling attributes to [0;1] range" << std::endl;
@@ -328,35 +332,35 @@ int main(int argc, char** argv) {
 			scale_min = -1.0, scale_max = 1.0;
 			std::cout << "Scaling attributes to [-1; 1] range" << std::endl;
 		}
-		for (int i = 0; i < num_attributes; ++i) {
+		for (size_t i = 0; i < num_attributes; ++i) {
 			double x_max = -std::numeric_limits<double>::infinity();
 			double x_min = std::numeric_limits<double>::infinity();
-			for (int j = 0; j < x.size(); j += num_attributes) {
+			for (size_t j = 0; j < x.size(); j += num_attributes) {
 				x_max = std::max(x_max, x[j+i]);
 				x_min = std::min(x_min, x[j+i]);
 			}
 
 			for (auto dataset : datasets)
-				for (int j = 0; j < dataset.get().size(); j += num_attributes)
+				for (size_t j = 0; j < dataset.get().size(); j += num_attributes)
 					dataset.get()[j + i] = normalization_scale(dataset.get()[j + i], scale_min, scale_max, x_min, x_max);
 		}
 	}
 	// normalize using z-score
 	else if (options.count(NORMALIZATION_OPTION_Z)) {
 		std::cout << "Normalizing attributes using z-score" << std::endl;
-		double x_mean;
-		double x_variance;
-		for (int i = 0; i < num_attributes; ++i) {
+		for (size_t i = 0; i < num_attributes; ++i) {
+			double x_mean = 0.0;
+			double x_variance = 0.0;
 			// calculate mean and stdev in two steps
 			// there are algorithms for calculating stdev in one pass
 			// but usually at the expense of numerical accuracy
-			for (int j = 0; j < x.size(); j += num_attributes)
+			for (size_t j = 0; j < x.size(); j += num_attributes)
 				x_mean += x[i+j] / static_cast<double>(y.size());
-			for (int j = 0; j < x.size(); j += num_attributes)
+			for (size_t j = 0; j < x.size(); j += num_attributes)
 				x_variance += (x[i+j] - x_mean) * (x[i+j] - x_mean) / static_cast<double>(y.size());
 
 			for (auto dataset : datasets)
-				for (int j = 0; j < dataset.get().size(); j += num_attributes)
+				for (size_t j = 0; j < dataset.get().size(); j += num_attributes)
 					dataset.get()[j + i] = normalization_standard(dataset.get()[j + i], x_mean, std::sqrt(x_variance));
 		}
 	}
