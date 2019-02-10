@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <thrust/device_vector.h>
 #include <thrust/extrema.h>
-#include <iostream>
 
 #include "psvm/svm.h"
 #include "psvm/clamp.h"
@@ -120,7 +119,6 @@ unsigned int smo(SVM<KT>& svm, const std::vector<double>& x, const std::vector<i
 				return dp_g[k] + dp_y[k] * (Kik * delta_ai * dp_y[i] + Kjk * delta_aj * dp_y[j]);
 			}
 		);
-		//std::cout << "selected pairs " << i << "," << j << " gmax: " << g_max << " gmin: " << g_min << " step: " << step << " objmin: " << obj_min << std::endl;
 	}
 	cudaFree(d_kernel);
 
