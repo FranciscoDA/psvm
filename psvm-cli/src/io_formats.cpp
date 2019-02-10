@@ -91,7 +91,7 @@ void read_IDX(std::vector<T>& x, const std::string& path) {
 	int type = dataset.get();
 	size_t d = dataset.get();
 	size_t dn = 1;
-	for (int i = 0; i < d; ++i) {
+	for (size_t i = 0; i < d; ++i) {
 		size_t s = valueIDX<int>(dataset);
 		dn *= s;
 	}
