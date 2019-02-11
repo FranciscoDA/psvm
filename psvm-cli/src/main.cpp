@@ -33,34 +33,34 @@ void do_test_predict(
 	const std::vector<double>& px, const SVCT& svc
 ) {
 	if (ty.size() > 0) {
-		std::vector<int> confusion_matrix (svc._classes * svc._classes);
+		std::vector<int> confusion_matrix (svc.num_classes * svc.num_classes);
 		for (size_t i = 0; i < ty.size(); ++i) {
-			int prediction = svc.predict(&tx[i * svc.getDimensions()]);
-			confusion_matrix[ty[i] * svc._classes + prediction]++;
+			int prediction = svc.predict(&tx[i * svc.num_dimensions]);
+			confusion_matrix[ty[i] * svc.num_classes + prediction]++;
 		}
 		int tptn = 0;
-		for (int i = 0; i < svc._classes; ++i)
-			tptn += confusion_matrix[i*svc._classes+i];
+		for (int i = 0; i < svc.num_classes; ++i)
+			tptn += confusion_matrix[i*svc.num_classes+i];
 		double accuracy = double(tptn)/double(ty.size());
 		std::cout << "Model accuracy: " << tptn << "/" << ty.size() << " = " << accuracy << std::endl;
 		std::cout << "Confusion matrix:" << std::endl;
 		std::cout << "*\t";
-		for (int j = 0; j < svc._classes; j++) {
+		for (int j = 0; j < svc.num_classes; j++) {
 			std::cout << j << "\t";
 		}
 		std::cout << std::endl;
-		for (int i = 0; i < svc._classes; i++) {
+		for (int i = 0; i < svc.num_classes; i++) {
 			std::cout << i << "\t";
-			for (int j = 0; j < svc._classes; j++) {
-				std::cout << confusion_matrix[i*svc._classes+j] << "\t";
+			for (int j = 0; j < svc.num_classes; j++) {
+				std::cout << confusion_matrix[i*svc.num_classes+j] << "\t";
 			}
 			std::cout << std::endl;
 		}
 	}
 	if (px.size() > 0) {
 		std::cout << "Predictions:" << std::endl;
-		for (size_t i = 0; i < px.size()/svc.getDimensions(); ++i) {
-			std::cout << i << ". " << svc.predict(&px[i*svc.getDimensions()]) << std::endl;
+		for (size_t i = 0; i < px.size()/svc.num_dimensions; ++i) {
+			std::cout << i << ". " << svc.predict(&px[i*svc.num_dimensions]) << std::endl;
 		}
 	}
 }
