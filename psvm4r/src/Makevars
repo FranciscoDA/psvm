@@ -1,0 +1,4 @@
+CXX_STD = CXX14
+PKG_CXXFLAGS = -Wall
+PKG_CPPFLAGS = -I../../libpsvm/include
+PKG_LIBS = -L../../build/lib -lsvm
