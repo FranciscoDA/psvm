@@ -10,13 +10,13 @@
 
 /* sequential minimal optimization method */
 template<typename KT>
-unsigned int smo(SVM<KT>& svm, const std::vector<double>& x, const std::vector<int>& y, double epsilon, double C) {
-	size_t n = y.size();
-	size_t d = svm.getDimensions();
+unsigned int smo(SVM& svm, const std::vector<double>& x, const std::vector<int>& y, double epsilon, double C) {
+	const size_t n = y.size();
+	const size_t d = svm.num_dimensions;
 
 	KT* d_kernel;
 	cudaMalloc(&d_kernel, sizeof(KT));
-	cudaMemcpy(d_kernel, (void*) &svm.kernel, sizeof(KT), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_kernel, (void*) static_cast<const KT*>(svm.kernel.get()), sizeof(KT), cudaMemcpyHostToDevice);
 
 	thrust::device_vector<double> d_x(x);
 	thrust::device_vector<int>    d_y(y);
@@ -128,6 +128,6 @@ unsigned int smo(SVM<KT>& svm, const std::vector<double>& x, const std::vector<i
 	return iterations;
 }
 
-template unsigned int smo(SVM<LinearKernel>&, const std::vector<double>&, const std::vector<int>&, double, double);
-template unsigned int smo(SVM<RbfKernel>&, const std::vector<double>&, const std::vector<int>&, double, double);
-template unsigned int smo(SVM<PolynomialKernel>&, const std::vector<double>&, const std::vector<int>&, double, double);
+template unsigned int smo<LinearKernel>(SVM&, const std::vector<double>&, const std::vector<int>&, double, double);
+template unsigned int smo<PolynomialKernel>(SVM&, const std::vector<double>&, const std::vector<int>&, double, double);
+template unsigned int smo<RbfKernel>(SVM&, const std::vector<double>&, const std::vector<int>&, double, double);

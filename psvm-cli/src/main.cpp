@@ -24,125 +24,6 @@ static const char* NORMALIZATION_OPTION_Z   = "nz";
 static const char* SVC_OPTION_1AA           = "1AA";
 static const char* SVC_OPTION_1A1           = "1A1";
 
-// perform tests and predictions
-// tests results are shown as a confusion matrix
-// prediction results are shown line by line
-template<typename SVCT>
-void do_test_predict(
-	const std::vector<double>& tx, const std::vector<int>& ty,
-	const std::vector<double>& px, const SVCT& svc
-) {
-	if (ty.size() > 0) {
-		std::vector<int> confusion_matrix (svc.num_classes * svc.num_classes);
-		for (size_t i = 0; i < ty.size(); ++i) {
-			int prediction = svc.predict(&tx[i * svc.num_dimensions]);
-			confusion_matrix[ty[i] * svc.num_classes + prediction]++;
-		}
-		int tptn = 0;
-		for (int i = 0; i < svc.num_classes; ++i)
-			tptn += confusion_matrix[i*svc.num_classes+i];
-		double accuracy = double(tptn)/double(ty.size());
-		std::cout << "Model accuracy: " << tptn << "/" << ty.size() << " = " << accuracy << std::endl;
-		std::cout << "Confusion matrix:" << std::endl;
-		std::cout << "*\t";
-		for (int j = 0; j < svc.num_classes; j++) {
-			std::cout << j << "\t";
-		}
-		std::cout << std::endl;
-		for (int i = 0; i < svc.num_classes; i++) {
-			std::cout << i << "\t";
-			for (int j = 0; j < svc.num_classes; j++) {
-				std::cout << confusion_matrix[i*svc.num_classes+j] << "\t";
-			}
-			std::cout << std::endl;
-		}
-	}
-	if (px.size() > 0) {
-		std::cout << "Predictions:" << std::endl;
-		for (size_t i = 0; i < px.size()/svc.num_dimensions; ++i) {
-			std::cout << i << ". " << svc.predict(&px[i*svc.num_dimensions]) << std::endl;
-		}
-	}
-}
-
-// build and train classifier from the command-line options and call do_test_predict
-template<typename KT>
-void do_build_svc(
-	const std::vector<double>& x, const std::vector<int>& y,
-	const std::vector<double>& tx, const std::vector<int>& ty,
-	const std::vector<double>& px, const double C, KT&& kernel, int num_attributes, int num_classes,
-	const po::variables_map& options
-) {
-	if (options.count(SVC_OPTION_1AA)) {
-		std::cout << "One-against-all classification" << std::endl;
-		OneAgainstAllSVC<KT> svc (num_classes, num_attributes, kernel);
-		auto start_t = std::chrono::system_clock::now();
-		svc.train(x, y, C,
-			[&start_t](int i) {
-				std::cout << "Training " << i << " vs. all" << std::endl;
-				start_t = std::chrono::system_clock::now();
-				return false;
-			},
-			[&start_t](unsigned int nsvs, unsigned int iters) {
-				auto end_t = std::chrono::system_clock::now();
-				std::chrono::duration<double> elapsed = end_t-start_t;
-				std::cout << "#SVs: " << nsvs << "(" << iters << " iterations in " << elapsed.count() << "s)" << std::endl;
-				return false;
-			}
-		);
-		do_test_predict(tx, ty, px, svc);
-	}
-	else if (options.count(SVC_OPTION_1A1)) {
-		std::cout << "One-against-one classification" << std::endl;
-		OneAgainstOneSVC<KT> svc (num_classes, num_attributes, kernel);
-		auto start_t = std::chrono::system_clock::now();
-		svc.train(x, y, C,
-			[&start_t](int i, int j, size_t psize) {
-				std::cout << "Training " << i << " vs. " << j << " (problem size: " << psize << ")" << std::endl;
-				start_t = std::chrono::system_clock::now();
-				return false;
-			},
-			[&start_t](unsigned int nsvs, unsigned int iters) {
-				auto end_t = std::chrono::system_clock::now();
-				std::chrono::duration<double> elapsed = end_t-start_t;
-				std::cout << "#SVs: " << nsvs << " (" << iters << " iterations in " << elapsed.count() << "s)" << std::endl;
-				return false;
-			}
-		);
-		do_test_predict(tx, ty, px, svc);
-	}
-	else {
-		std::cerr << "Unknown svc selection" << std::endl;
-	}
-}
-
-// build the SVM kernel using the command-line options and call do_build_svc
-void do_build_kernel(
-	const std::vector<double>& x, const std::vector<int>& y,
-	const std::vector<double>& tx, const std::vector<int>& ty,
-	const std::vector<double>& px, const double C, int num_attributes, int num_classes,
-	const po::variables_map& options
-) {
-	if (options.count(KERNEL_OPTION_LINEAR)) {
-		std::cout << "Using linear kernel" << std::endl;
-		do_build_svc(x, y, tx, ty, px, C, LinearKernel(), num_attributes, num_classes, options);
-	}
-	else if (options.count(KERNEL_OPTION_RBF)) {
-		double gamma = options["kernel-gamma"].as<double>();
-		std::cout << "Using RBF kernel with gamma=" << gamma << std::endl;
-		do_build_svc(x, y, tx, ty, px, C, RbfKernel(gamma), num_attributes, num_classes, options);
-	}
-	else if (options.count(KERNEL_OPTION_POLYNOMIAL)) {
-		double d = options["kernel-degree"].as<double>();
-		double c = options["kernel-constant"].as<double>();
-		std::cout << "Using Poly kernel with d=" << d << ", c=" << c << std::endl;
-		do_build_svc(x, y, tx, ty, px, C, PolynomialKernel(d,C), num_attributes, num_classes, options);
-	}
-	else {
-		std::cerr << "Unknown kernel selection" << std::endl;
-	}
-}
-
 template<typename T>
 void do_read_data(std::vector<T>& out, const std::string& option_path_key, const std::string& option_fmt_key, const po::variables_map& options) {
 	// if option is set, use the format specified by the user. autodetect otherwise
@@ -365,6 +246,107 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	do_build_kernel(x, y, test_x, test_y, predict_x, C, num_attributes, num_classes, options);
+	// build kernel
+	std::shared_ptr<const Kernel> kernel;
+	if (options.count(KERNEL_OPTION_LINEAR)) {
+		std::cout << "Using linear kernel" << std::endl;
+		kernel = std::make_shared<const LinearKernel>();
+	}
+	else if (options.count(KERNEL_OPTION_POLYNOMIAL)) {
+		double degree = options["kernel-degree"].as<double>();
+		double constant = options["kernel-constant"].as<double>();
+		std::cout << "Using Poly kernel with d=" << degree << ", c=" << constant << std::endl;
+		kernel = std::make_shared<const PolynomialKernel>(degree, constant);
+	}
+	else if (options.count(KERNEL_OPTION_RBF)) {
+		double gamma = options["kernel-gamma"].as<double>();
+		std::cout << "Using RBF kernel with gamma=" << gamma << std::endl;
+		kernel = std::make_shared<const RbfKernel>(gamma);
+	}
+	else {
+		std::cerr << "Unknown kernel selection" << std::endl;
+		return 1;
+	}
+
+	// build svc
+	std::shared_ptr<CSVC> svc;
+	if (options.count(SVC_OPTION_1AA)) {
+		std::cout << "One-against-all classification" << std::endl;
+		svc = std::make_shared<OneAgainstAllCSVC>(num_classes, num_attributes, kernel);
+		auto start_t = std::chrono::system_clock::now();
+		svc->train(x, y, C,
+			[&start_t](int i, size_t psize) {
+				std::cout << "Training " << i << " vs. all (problem size: " << psize << ")" << std::endl;
+				start_t = std::chrono::system_clock::now();
+				return false;
+			},
+			[&start_t](const SVM& svm, unsigned int iters) {
+				auto end_t = std::chrono::system_clock::now();
+				std::chrono::duration<double> elapsed = end_t-start_t;
+				std::cout << "#SVs: " << svm.getSupportVectorCount() << "(" << iters << " iterations in " << elapsed.count() << "s)" << std::endl;
+				return false;
+			}
+		);
+	}
+	else if (options.count(SVC_OPTION_1A1)) {
+		std::cout << "One-against-one classification" << std::endl;
+		svc = std::make_shared<OneAgainstOneCSVC>(num_classes, num_attributes, kernel);
+		auto start_t = std::chrono::system_clock::now();
+		svc->train(x, y, C,
+			[&start_t, num_classes](int i, size_t psize) {
+				std::cout << "Training " << (i / num_classes) << " vs. " << (i % num_classes) << " (problem size: " << psize << ")" << std::endl;
+				start_t = std::chrono::system_clock::now();
+				return false;
+			},
+			[&start_t](const SVM& svm, unsigned int iters) {
+				auto end_t = std::chrono::system_clock::now();
+				std::chrono::duration<double> elapsed = end_t-start_t;
+				std::cout << "#SVs: " << svm.getSupportVectorCount() << " (" << iters << " iterations in " << elapsed.count() << "s)" << std::endl;
+				return false;
+			}
+		);
+	}
+	else {
+		std::cerr << "Unknown svc selection" << std::endl;
+		return 1;
+	}
+
+	// testing
+	// tests results are shown as a confusion matrix
+	if (test_y.size() > 0) {
+		std::vector<int> confusion_matrix (num_classes * num_classes, 0);
+		for (size_t i = 0; i < test_y.size(); ++i) {
+			int prediction = svc->predict(&test_x[i * num_attributes]);
+			confusion_matrix[test_y[i] * num_classes + prediction]++;
+		}
+		// true positives + true negatives
+		int tptn = 0;
+		for (size_t i = 0; i < num_classes; ++i)
+			tptn += confusion_matrix[i * num_classes+i];
+		double accuracy = double(tptn) / double(test_y.size());
+		std::cout << "Model accuracy: " << tptn << "/" << test_y.size() << " = " << accuracy << std::endl;
+		std::cout << "Confusion matrix:" << std::endl;
+		std::cout << "*\t";
+		for (size_t j = 0; j < num_classes; j++) {
+			std::cout << j << "\t";
+		}
+		std::cout << std::endl;
+		for (size_t i = 0; i < num_classes; i++) {
+			std::cout << i << "\t";
+			for (size_t j = 0; j < num_classes; j++) {
+				std::cout << confusion_matrix[i * num_classes + j] << "\t";
+			}
+			std::cout << std::endl;
+		}
+	}
+
+	// predictions
+	// predictions are shown line by line
+	if (predict_x.size() > 0) {
+		std::cout << "Predictions:" << std::endl;
+		for (size_t i = 0; i < predict_x.size() / num_attributes; ++i) {
+			std::cout << i << ". " << svc->predict(&predict_x[i * num_attributes]) << std::endl;
+		}
+	}
 }
 

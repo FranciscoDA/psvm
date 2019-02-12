@@ -9,14 +9,15 @@
 
 /* sequential minimal optimization method implementation */
 template<typename KT>
-unsigned int smo(SVM<KT>& svm, const std::vector<double>& x, const std::vector<int>& y, double epsilon, double C) {
-	size_t n = y.size();
-	size_t d = svm.getDimensions();
+unsigned int smo(SVM& svm, const std::vector<double>& x, const std::vector<int>& y, double epsilon, double C) {
+	const size_t n = y.size();
+	const size_t d = svm.num_dimensions;
+
 	std::vector<double> alpha(n, 0.0);
 	std::vector<double> g(n, -1.0); // gradient
 	std::vector<double> k_cache(n); // cache for the diagonal of the kernel matrix
 	for (size_t i = 0; i < n; ++i)
-		k_cache[i] = svm.kernel(&x[i*d], &x[i*d+d], &x[i*d]);
+		k_cache[i] = svm.kernel->operator()(&x[i*d], &x[i*d+d], &x[i*d]);
 	std::vector<double> ki_cache(n); // cache for the ith row of the kernel matrix
 
 	unsigned int iterations = 0;
@@ -37,7 +38,7 @@ unsigned int smo(SVM<KT>& svm, const std::vector<double>& x, const std::vector<i
 
 		// fill cache for the ith row of the kernel matrix
 		for (size_t k = 0; k < n; ++k)
-			ki_cache[k] = svm.kernel(&x[i*d], &x[i*d+d], &x[k*d]);
+			ki_cache[k] = svm.kernel->operator()(&x[i*d], &x[i*d+d], &x[k*d]);
 
 		int j = -1;
 		double obj_min = std::numeric_limits<double>::infinity();
@@ -84,7 +85,7 @@ unsigned int smo(SVM<KT>& svm, const std::vector<double>& x, const std::vector<i
 		const double delta_aj = alpha[j] - old_aj;
 		for (size_t k = 0; k < n; ++k) {
 			const double Kik = ki_cache[k];
-			const double Kjk = svm.kernel(&x[j*d], &x[j*d+d], &x[k*d]);
+			const double Kjk = svm.kernel->operator()(&x[j*d], &x[j*d+d], &x[k*d]);
 			g[k] += y[k] * (Kik * delta_ai * y[i] + Kjk * delta_aj * y[j]);
 		}
 	}
@@ -92,6 +93,7 @@ unsigned int smo(SVM<KT>& svm, const std::vector<double>& x, const std::vector<i
 	return iterations;
 }
 
-template unsigned int smo(SVM<LinearKernel>&, const std::vector<double>&, const std::vector<int>&, double, double);
-template unsigned int smo(SVM<RbfKernel>&, const std::vector<double>&, const std::vector<int>&, double, double);
-template unsigned int smo(SVM<PolynomialKernel>&, const std::vector<double>&, const std::vector<int>&, double, double);
+template unsigned int smo<LinearKernel>(SVM&, const std::vector<double>&, const std::vector<int>&, double, double);
+template unsigned int smo<PolynomialKernel>(SVM&, const std::vector<double>&, const std::vector<int>&, double, double);
+template unsigned int smo<RbfKernel>(SVM&, const std::vector<double>&, const std::vector<int>&, double, double);
+
