@@ -1,6 +1,7 @@
 Package: psvm4r
+Encoding: UTF-8
 Type: Package
-Title: What the Package Does in One 'Title Case' Line
+Title: Sequential and parallel (CUDA) SVM classifier implementations
 Version: 1.0
 Date: 2019-02-01
 Author: Francisco Altoe
@@ -10,3 +11,4 @@ Description: One paragraph description of what the package does as one
 License: GPLv3
 Imports: Rcpp (>= 1.0.0)
 LinkingTo: Rcpp
+RoxygenNote: 6.1.1

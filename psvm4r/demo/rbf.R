@@ -4,11 +4,8 @@ attributes <- data.frame(
 )
 labels <- c(0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0)
 
-# radial basis function kernel (gamma 2)
-K <- new('RbfKernel', 2.0)
-
-# 2 classes, 2 dimensions
-SVC <- new('OAORbfKernel', 2, 2, K)
+# 2 classes, 2 dimensions + RBF kernel (gamma 2.0)
+SVC <- new('OneAgainstOneCSVC', 2, 2, new('RbfKernel', 2.0))
 
 # C=2.0
 SVC$train(attributes, labels, 2.0)

@@ -1,39 +1,46 @@
 
-setClass('LinearKernel', representation(pointer='externalptr'))
+setClass('Kernel', representation(pointer='externalptr'))
+setMethod('names', 'Kernel', function(x) {
+	c('get')
+})
+setMethod('$', 'Kernel', function(x, name) {
+	if (name == 'get') {
+		function(...) .Kernel__get(x@pointer, ...)
+	}
+})
+
+#' LinearKernel class.
+setClass('LinearKernel', contains=c('Kernel'))
+
+#' Create a LinearKernel. No parameters are necessary.
 setMethod('initialize', 'LinearKernel', function(.Object, ...) {
 	.Object@pointer <- .LinearKernel__new(...)
 	.Object
 })
-setMethod('names', 'LinearKernel', function(x) { c('get'); })
-setMethod('$', 'LinearKernel', function(x, name) {
-	if (name == 'get') {
-		function(...) .Call(paste0('_psvm4r_LinearKernel__', name), x@pointer, ...)
-	}
-})
 
-setClass('PolynomialKernel', representation(pointer='externalptr'))
+#' PolynomialKernel class.
+setClass('PolynomialKernel', contains=c('Kernel'))
+
+#' Create a PolynomialKernel with the given parameters.
+#'
+#' @param degree degree of the exponent
+#' @param constant additive constant
 setMethod('initialize', 'PolynomialKernel', function(.Object, ...) {
 	.Object@pointer <- .PolynomialKernel__new(...)
 	.Object
 })
-setMethod('names', 'PolynomialKernel', function(x) { c('get'); })
-setMethod('$', 'PolynomialKernel', function(x, name) {
-	if (name == 'get') {
-		function(...) .Call(paste0('_psvm4r_PolynomialKernel__', name), x@pointer, ...)
-	}
-})
 
-setClass('RbfKernel', representation(pointer='externalptr'))
+#' RbfKernel class.
+setClass('RbfKernel', contains=c('Kernel'))
+
+#' Create a RbfKernel with the given parameter.
+#'
+#' @param gamma Parameter to control the radius. Note that gamma=1/(2*sigma^2) so a higher gamma yields a smaller radius
 setMethod('initialize', 'RbfKernel', function(.Object, ...) {
 	.Object@pointer <- .RbfKernel__new(...)
 	.Object
 })
-setMethod('names', 'RbfKernel', function(x) { c('get'); })
-setMethod('$', 'RbfKernel', function(x, name) {
-	if (name == 'get') {
-		function(...) .Call(paste0('_psvm4r_RbfKernel__', name), x@pointer, ...)
-	}
-})
+
 
 # convert a multidimensional entity (dataframe or matrix) into a 1d vector
 .reorder <- function(attributes) {
@@ -43,60 +50,70 @@ setMethod('$', 'RbfKernel', function(x, name) {
 		attributes
 }
 
-.makeSVC <- function(SVCT, KT) {
-	.class <- paste0(SVCT, KT)
-	setClass(.class, representation(pointer='externalptr'))
-	setMethod('initialize', .class, function(.Object, num_classes, num_dimensions, kernel) {
-		if (KT %in% class(kernel)) {
-			.Object@pointer <- .Call(paste0('_psvm4r_', .class, '__new'), num_classes, num_dimensions, kernel@pointer)
-			.Object
+setClass('CSVC', representation(pointer='externalptr'))
+setMethod('show', 'CSVC', function(object) {
+	cat(class(object), ' (', object$num_dimensions, ' dimensions, ', object$num_classes, ' classes, ', sum(object$num_sv), ' total SVs)\n', sep='')
+})
+setMethod('print', 'CSVC', function(x) {
+	show(x)
+	invisible(x)
+})
+setMethod('names', 'CSVC', function(x) c('train', 'predict', 'num_sv', 'num_classes', 'num_dimensions'))
+setMethod('$', 'CSVC', function(x, name) {
+	if (name == 'train') {
+		function(attributes, labels, C) {
+			.CSVC__train(x@pointer, .reorder(attributes), labels, C);
+			invisible(x)
 		}
-		else {
-			stop(paste('Incorrect kernel type', class(kernel), 'expected', KT))
+	}
+	else if (name == 'predict') {
+		function(...) {
+			if (...length() == 1)
+				attributes <- .reorder(..1)
+			else if (...length() > 1)
+				attributes <- c(rbind(...))
+			else
+				stop('No attributes to predict on')
+			.CSVC__predict(x@pointer, attributes)
 		}
-	})
-	setMethod('show', .class, function(object) {
-		cat(.class, ' (', object$num_dimensions, ' dimensions, ', object$num_classes, ' classes, ', sum(object$num_sv), ' total SVs)\n', sep='')
-	})
-	setMethod('print', .class, function(x) {
-		show(x)
-		invisible(x)
-	})
-	setMethod('names', .class, function(x) c('train', 'predict', 'num_sv', 'num_classes', 'num_dimensions'))
-	setMethod('$', .class, function(x, name) {
-		if (name == 'train') {
-			function(attributes, labels, C) {
-				.Call(paste0('_psvm4r_', .class, '__train'), x@pointer, .reorder(attributes), labels, C);
-				invisible(x)
-			}
-		}
-		else if (name == 'predict') {
-			function(...) {
-				if (...length() == 1)
-					attributes <- .reorder(..1)
-				else if (...length() > 1)
-					attributes <- c(rbind(...))
-				else
-					stop('No attributes to predict on')
-				.Call(paste0('_psvm4r_', .class, '__predict'), x@pointer, attributes)
-			}
-		}
-		else if (name == 'num_sv') {
-			.Call(paste0('_psvm4r_', .class, '__num_sv'), x@pointer)
-		}
-		else if (name == 'num_classes') {
-			.Call(paste0('_psvm4r_', .class, '__num_classes'), x@pointer)
-		}
-		else if (name == 'num_dimensions') {
-			.Call(paste0('_psvm4r_', .class, '__num_dimensions'), x@pointer)
-		}
-	})
-}
+	}
+	else if (name == 'num_sv') {
+		.CSVC__num_sv(x@pointer)
+	}
+	else if (name == 'num_classes') {
+		.CSVC__num_classes(x@pointer)
+	}
+	else if (name == 'num_dimensions') {
+		.CSVC__num_dimensions(x@pointer)
+	}
+})
 
-.makeSVC('OAO', 'LinearKernel')
-.makeSVC('OAO', 'PolynomialKernel')
-.makeSVC('OAO', 'RbfKernel')
-.makeSVC('OAA', 'LinearKernel')
-.makeSVC('OAA', 'PolynomialKernel')
-.makeSVC('OAA', 'RbfKernel')
+#' OneAgainstAllCSVC class.
+setClass('OneAgainstAllCSVC', contains=c('CSVC'))
 
+#' Create a One-against-all C-SVC with the given parameters
+#'
+#' @param num_classes number of distinct classes in the label vector of the problem
+#' @param num_dimensions number of dimensions in the attributes table of the problem
+#' @param kernel kernel object to use
+setMethod('initialize', 'OneAgainstAllCSVC', function(.Object, num_classes, num_dimensions, kernel) {
+	if (!inherits(kernel, 'Kernel'))
+		stop('`kernel` argument is not a proper kernel object')
+	.Object@pointer <- .OneAgainstAllCSVC__new(num_classes, num_dimensions, kernel@pointer)
+	.Object
+})
+
+#' OneAgainstOneCSVC class.
+setClass('OneAgainstOneCSVC', contains=c('CSVC'))
+
+#' Create a One-against-one C-SVC with the given parameters
+#'
+#' @param num_classes number of distinct classes in the label vector of the problem
+#' @param num_dimensions number of dimensions in the attributes table of the problem
+#' @param kernel kernel object to use
+setMethod('initialize', 'OneAgainstOneCSVC', function(.Object, num_classes, num_dimensions, kernel) {
+	if (!inherits(kernel, 'Kernel'))
+		stop('`kernel` argument is not a proper kernel object')
+	.Object@pointer <- .OneAgainstOneCSVC__new(num_classes, num_dimensions, kernel@pointer)
+	.Object
+})

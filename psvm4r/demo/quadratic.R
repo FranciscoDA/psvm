@@ -4,11 +4,8 @@ attributes <- data.frame(
 )
 labels <- c(0, 0, 0, 0, 1, 1, 1, 1)
 
-# quadratic homogeneous kernel (degree 2, constant 0)
-K <- new('PolynomialKernel', 2, 0)
-
-# 2 classes, 2 dimensions
-SVC <- new('OAOPolynomialKernel', 2, 2, K)
+# 2 classes, 2 dimensions + polynomial kernel (degree 2.0, constant 0.0)
+SVC <- new('OneAgainstOneCSVC', 2, 2, new('PolynomialKernel', 2.0, 0.0))
 
 # C=1.0
 SVC$train(attributes, labels, 1.0)

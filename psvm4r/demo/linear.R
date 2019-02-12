@@ -4,10 +4,8 @@ attributes <- data.frame(
 )
 labels <- c(0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1)
 
-K <- new('LinearKernel')
-
-# 2 classes, 2 dimensions
-SVC <- new('OAALinearKernel', 2, 2, K)
+# 2 classes, 2 dimensions + linear kernel
+SVC <- new('OneAgainstOneCSVC', 2, 2, new('LinearKernel'))
 
 # C=1.0
 SVC$train(attributes, labels, 1.0)
