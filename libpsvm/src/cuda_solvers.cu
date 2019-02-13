@@ -14,9 +14,11 @@ unsigned int smo(SVM& svm, const std::vector<double>& x, const std::vector<int>&
 	const size_t n = y.size();
 	const size_t d = svm.num_dimensions;
 
+	const KT kernel_cpy = *static_cast<const KT*>(svm.kernel.get());
+
 	KT* d_kernel;
 	cudaMalloc(&d_kernel, sizeof(KT));
-	cudaMemcpy(d_kernel, (void*) static_cast<const KT*>(svm.kernel.get()), sizeof(KT), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_kernel, (void*) &kernel_cpy, sizeof(KT), cudaMemcpyHostToDevice);
 
 	thrust::device_vector<double> d_x(x);
 	thrust::device_vector<int>    d_y(y);
@@ -32,7 +34,8 @@ unsigned int smo(SVM& svm, const std::vector<double>& x, const std::vector<int>&
 	thrust::counting_iterator<int> ids_last = ids_first+n;
 
 	auto apply_kernel = [d, d_kernel, dp_x] __device__ (int i, int j) {
-		return (*d_kernel)(dp_x + i*d, dp_x + i*d + d, dp_x + j*d);
+		return 0;
+		//return (*d_kernel)(dp_x + i*d, dp_x + i*d + d, dp_x + j*d);
 	};
 
 	// cache for diagonal of kernel matrix

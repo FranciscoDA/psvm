@@ -32,7 +32,7 @@ public:
 class RbfKernel : public Kernel {
 public:
 	RbfKernel(double gamma);
-	CUDA_CALLABLE_MEMBER double operator()(const double* x1, const double* x2, const double* y1) const {
+	CUDA_CALLABLE_MEMBER double operator()(const double* x1, const double* x2, const double* y1) const override {
 		double result = 0.;
 		while (x1 != x2) {
 			result += (*x1 - *y1) * (*x1 - *y1);
@@ -48,7 +48,7 @@ public:
 class PolynomialKernel : public Kernel {
 public:
 	PolynomialKernel(double d, double c);
-	CUDA_CALLABLE_MEMBER double operator()(const double* x1, const double* x2, const double* y1) const {
+	CUDA_CALLABLE_MEMBER double operator()(const double* x1, const double* x2, const double* y1) const override {
 		double result = constant;
 		while (x1 != x2) {
 			result += (*x1) * (*y1);
