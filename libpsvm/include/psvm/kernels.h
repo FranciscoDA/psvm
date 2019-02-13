@@ -10,14 +10,17 @@
 
 class Kernel {
 public:
-	CUDA_CALLABLE_MEMBER virtual double operator()(const double*, const double*, const double*) const = 0;
+	virtual double operator()(const double*, const double*, const double*) const = 0;
 	virtual Kernel* clone() const = 0;
 	virtual ~Kernel();
 };
 
 class LinearKernel : public Kernel {
 public:
-	CUDA_CALLABLE_MEMBER double operator()(const double* x1, const double* x2, const double* y1) const override {
+	double operator()(const double* x1, const double* x2, const double* y1) const override;
+	LinearKernel* clone() const override;
+
+	static CUDA_CALLABLE_MEMBER double Apply(const LinearKernel* kernel, const double* x1, const double* x2, const double* y1) {
 		double result = 0.;
 		while (x1 != x2) {
 			result += (*x1) * (*y1);
@@ -26,39 +29,42 @@ public:
 		}
 		return result;
 	}
-	LinearKernel* clone() const override;
 };
 
 class RbfKernel : public Kernel {
 public:
 	RbfKernel(double gamma);
-	CUDA_CALLABLE_MEMBER double operator()(const double* x1, const double* x2, const double* y1) const override {
+	double operator()(const double* x1, const double* x2, const double* y1) const override;
+	const double gamma;
+	RbfKernel* clone() const override;
+
+	static CUDA_CALLABLE_MEMBER double Apply(const RbfKernel* kernel, const double* x1, const double* x2, const double* y1) {
 		double result = 0.;
 		while (x1 != x2) {
 			result += (*x1 - *y1) * (*x1 - *y1);
 			++x1;
 			++y1;
 		}
-		return exp(-gamma * result);
+		return exp(-kernel->gamma * result);
 	}
-	const double gamma;
-	RbfKernel* clone() const override;
 };
 
 class PolynomialKernel : public Kernel {
 public:
 	PolynomialKernel(double d, double c);
-	CUDA_CALLABLE_MEMBER double operator()(const double* x1, const double* x2, const double* y1) const override {
-		double result = constant;
+	double operator()(const double* x1, const double* x2, const double* y1) const override;
+	const double degree;
+	const double constant;
+	PolynomialKernel* clone() const override;
+
+	static CUDA_CALLABLE_MEMBER double Apply(const PolynomialKernel* kernel, const double* x1, const double* x2, const double* y1) {
+		double result = kernel->constant;
 		while (x1 != x2) {
 			result += (*x1) * (*y1);
 			++x1;
 			++y1;
 		}
-		return pow(result, degree);
+		return pow(result, kernel->degree);
 	}
-	const double degree;
-	const double constant;
-	PolynomialKernel* clone() const override;
 };
 
