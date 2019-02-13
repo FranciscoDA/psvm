@@ -1,8 +1,9 @@
 #include <algorithm>
-#include "psvm/classifier.h"
+#include "psvm/classifiers.h"
 
 CSVC::CSVC(int classes, size_t dimensions, std::shared_ptr<const Kernel> kernel) : num_classes(classes), num_dimensions(dimensions), kernel(kernel) {
 }
+
 CSVC::~CSVC() {
 }
 
@@ -10,15 +11,15 @@ bool CSVC::train(const std::vector<double>& x, const std::vector<int>& y, const 
 	return train(x, y, C, [](int, size_t) { return false; }, [](const SVM&, unsigned) { return false; });
 }
 
-unsigned CSVC::train_smo(SVM& svm, const std::vector<double>& attributes, const std::vector<int>& labels, double epsilon, double C) {
+unsigned CSVC::train_smo(SVM& svm, const std::vector<double>& dimensions, const std::vector<int>& labels, double epsilon, double C) {
 	if (dynamic_cast<const LinearKernel*>(kernel.get())) {
-		return smo<LinearKernel>(svm, attributes, labels, epsilon, C);
+		return smo<LinearKernel>(svm, dimensions, labels, epsilon, C);
 	}
 	else if (dynamic_cast<const PolynomialKernel*>(kernel.get())) {
-		return smo<PolynomialKernel>(svm, attributes, labels, epsilon, C);
+		return smo<PolynomialKernel>(svm, dimensions, labels, epsilon, C);
 	}
 	else if (dynamic_cast<const RbfKernel*>(kernel.get())) {
-		return smo<RbfKernel>(svm, attributes, labels, epsilon, C);
+		return smo<RbfKernel>(svm, dimensions, labels, epsilon, C);
 	}
 	return -1;
 }

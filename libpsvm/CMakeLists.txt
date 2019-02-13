@@ -1,7 +1,7 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.4)
 PROJECT(libpsvm LANGUAGES CXX)
 
-SET(PSVM_COMMON_SOURCE_FILES "src/classifier.cpp;src/svm.cpp;src/kernels.cpp")
+SET(PSVM_COMMON_SOURCE_FILES "src/classifiers.cpp;src/svm.cpp;src/kernels.cpp;src/model_io.cpp")
 
 ADD_LIBRARY(libsvm STATIC ${PSVM_COMMON_SOURCE_FILES} src/sequential_solvers.cpp)
 TARGET_INCLUDE_DIRECTORIES(libsvm PUBLIC ${THRUST_INCLUDE_DIRS} PRIVATE include)

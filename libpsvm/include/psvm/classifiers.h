@@ -25,7 +25,7 @@ protected:
 
 	// call the correct smo template according to the actual type of the kernel
 	// this is necessary because cuda doesnt allow dynamic polymorphism
-	unsigned train_smo(SVM& svm, const std::vector<double>& attributes, const std::vector<int>& labels, double epsilon, double C);
+	unsigned train_smo(SVM& svm, const std::vector<double>& dimensions, const std::vector<int>& labels, double epsilon, double C);
 };
 
 class OneAgainstAllCSVC : public CSVC {

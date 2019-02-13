@@ -4,11 +4,12 @@
 #include <iostream>
 #include <set>
 #include <algorithm>
+#include <fstream>
 
 #include <boost/program_options.hpp>
 
-#include <psvm/classifier.h>
-#include <psvm/svm.h>
+#include <psvm/classifiers.h>
+#include <psvm/model_io.h>
 
 #include "io_formats.h"
 #include "utils.h"
@@ -71,7 +72,9 @@ int main(int argc, char** argv) {
 		("cost,C",          po::value<double>()->default_value(1.0), "set cost parameter")
 		("kernel-degree",   po::value<double>()->default_value(2.0), "degree for polynomial kernel")
 		("kernel-constant", po::value<double>()->default_value(0.0), "constant for polynomial kernel")
-		("kernel-gamma",    po::value<double>()->default_value(.05), "gamma parameter for rbf kernel");
+		("kernel-gamma",    po::value<double>()->default_value(.05), "gamma parameter for rbf kernel")
+		("model-out,o",     po::value<std::string>(),         "output path to save model")
+		("model-in,i",      po::value<std::string>(),         "input path to load model");
 
 	po::variables_map options;
 	po::store(po::parse_command_line(argc, argv, desc), options);
@@ -270,7 +273,19 @@ int main(int argc, char** argv) {
 
 	// build svc
 	std::shared_ptr<CSVC> svc;
-	if (options.count(SVC_OPTION_1AA)) {
+	if (options.count("model-in")) {
+		std::string path = options["model-in"].as<std::string>();
+		std::fstream f(path, std::ios_base::in);
+		svc.reset(csvcFromStream(f));
+		if (svc) {
+			std::cout << "Loaded model from `" << path << "`\n";
+		}
+		else {
+			std::cerr << "Failed to load model from `" << path << "`\n";
+			return 1;
+		}
+	}
+	else if (options.count(SVC_OPTION_1AA)) {
 		std::cout << "One-against-all classification" << std::endl;
 		svc = std::make_shared<OneAgainstAllCSVC>(num_classes, num_attributes, kernel);
 		auto start_t = std::chrono::system_clock::now();
@@ -309,6 +324,18 @@ int main(int argc, char** argv) {
 	else {
 		std::cerr << "Unknown svc selection" << std::endl;
 		return 1;
+	}
+
+	if (options.count("model-out")) {
+		std::string path = options["model-out"].as<std::string>();
+		std::fstream f(path, std::ios_base::out);
+		if (f) {
+			toStream(svc.get(), f);
+			std::cout << "Model saved to `" << path << "`\n";
+		}
+		else {
+			std::cerr << "Could not save model to `" << path << "`\n";
+		}
 	}
 
 	// testing
