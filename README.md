@@ -60,11 +60,11 @@ Rcpp::compileAttributes('psvm4r')
 ```
 
 ### Description
-There are 9 S4 classes implemented in psvm4r. We can divide them among Kernel and Classifier classes:
+There are several S4 classes implemented in psvm4r that bind to libpsvm objects. We can divide them among Kernel and Classifier classes:
 
 #### Kernel classes
 These classes support an `object$get(x,y)` method. Where `x` and `y` are numeric vectors. This returns the element in the kernel matrix for vectors `x` and `y`.
-The following classes are available with their constructor parameters:
+The following classes are available with their respective constructor parameters:
  * `LinearKernel()`
  * `PolynomialKernel(degree, constant)`
  * `RbfKernel(gamma)`
@@ -74,13 +74,9 @@ These classes support the following methods:
  * `object$train(attributes, labels, C)`. Where `attributes` is a single- or multi-dimensional vector of numeric attributes, `labels` is a single vector of integer labels and `C` is a numeric value for the regularization parameter.
  * `object$predict(attributes)`. Predicts on a trained classifier object.
 
-The following classes are available with their constructor parameters:
- * `OAOLinearKernel(num_classes, num_dimensions, K)`
- * `OAOPolynomialKernel(num_classes, num_dimensions, K)`
- * `OAORbfKernel(num_classes, num_dimensions, K)`
- * `OAALinearKernel(num_classes, num_dimensions, K)`
- * `OAAPolynomialKernel(num_classes, num_dimensions, K)`
- * `OAARbfKernel(num_classes, num_dimensions, K)`
+The following classes are available with their respective constructor parameters:
+ * `OneAgainstOneCSVC(num_classes, num_dimensions, K)`
+ * `OneAgainstAllCSVC(num_classes, num_dimensions, K)`
 
 ### Demos
 There are a few demos included, demonstrating the decision boundaries of each kernel. To run them, run one of the following from the R command line:
